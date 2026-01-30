@@ -1,0 +1,5 @@
+# secrets
+.carrotquant/secrets.yaml
+
+# algorithms
+algo/**/private/
