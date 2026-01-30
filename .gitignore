@@ -1,3 +1,6 @@
+# dev temp
+.dev/
+
 # secrets
 .carrotquant/secrets.yaml
 
