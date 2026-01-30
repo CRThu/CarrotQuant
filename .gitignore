@@ -1,8 +1,8 @@
 # dev temp
 .dev/
 
-# secrets
-.carrotquant/secrets.yaml
+# configs
+.carrotquant/*.env
 
 # algorithms
 algo/**/private/
