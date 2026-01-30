@@ -6,3 +6,6 @@
 
 # algorithms
 algo/**/private/
+
+#logs
+logs/
