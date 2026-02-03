@@ -23,8 +23,7 @@ async def main():
     print("\n[2] Testing MarketManager Task...")
     req = SectorDownloadRequest(
         sectors=["半导体", "银行"], 
-        start_date="20240101", 
-        end_date="20240110"
+        months=["202401","202402"]
     )
     
     task_id = await market_manager.start_sector_download_task(req)
@@ -43,8 +42,8 @@ async def main():
 
     # 3. Verify Storage Result
     print("\n[3] Verifying Parquet File...")
-    # Expected path: data/dfcft-a-bk/year=2024/month=1/2024-01.parquet
-    parquet_path = Path(settings.DATA_DIR) / "dfcft-a-bk/year=2024/month=1/2024-01.parquet"
+    # Expected path: data/dfcft-a-bk/year=2024/2024-01.parquet
+    parquet_path = Path(settings.DATA_DIR) / "dfcft-a-bk/year=2024/2024-01.parquet"
     
     if parquet_path.exists():
         import duckdb

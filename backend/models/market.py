@@ -8,8 +8,7 @@ class SectorDownloadRequest(BaseModel):
     板块下载请求参数
     """
     sectors: Optional[List[str]] = None
-    start_date: str = "20250101"
-    end_date: str = "20250131"
+    months: List[str] = ["202501"] # Format: YYYYMM
 
 class MarketDataSchema(BaseModel):
     """

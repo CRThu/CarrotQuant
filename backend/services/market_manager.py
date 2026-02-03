@@ -23,7 +23,7 @@ class MarketDataManager:
         self.stop_events: Dict[str, asyncio.Event] = {}
         
     async def start_sector_download_task(self, request: SectorDownloadRequest) -> str:
-        """启动板块下载任务 (按月拆分)"""
+        """启动板块下载任务 (按月调度版本)"""
         task_id = str(uuid.uuid4())
         
         sectors = request.sectors
@@ -38,64 +38,47 @@ class MarketDataManager:
         self.tasks[task_id] = task
         self.stop_events[task_id] = asyncio.Event()
         
+        # Use request.months directly
         asyncio.create_task(
-            self._run_monthly_split_download(task_id, sectors, request.start_date, request.end_date)
+            self._run_monthly_split_download(task_id, sectors, request.months)
         )
         
         return task_id
 
-    def _generate_month_ranges(self, start_date: str, end_date: str):
-        """生成月份区间列表 [(2025, 1, '20250101', '20250131'), ...]"""
-        try:
-            start = pd.to_datetime(start_date)
-            end = pd.to_datetime(end_date)
-        except:
-             # Fallback
-            return []
-            
-        current = start.replace(day=1) 
-        ranges = []
-        
-        while current <= end:
-            year = current.year
-            month = current.month
-            
-            # 计算当月最后一天
-            _, last_day = monthrange(year, month)
-            month_end = current.replace(day=last_day)
-            
-            # 强制使用整月区间 (1号到最后一天)
-            # 配合 "当月全量覆盖" 策略，防止因下载部分日期导致覆盖后数据缺失
-            s_str = current.strftime('%Y%m%d')
-            e_str = month_end.strftime('%Y%m%d')
-            
-            ranges.append((year, month, s_str, e_str))
-            
-            # 下个月
-            if month == 12:
-                current = current.replace(year=year+1, month=1)
-            else:
-                current = current.replace(month=month+1)
-        
-        return ranges
-        
-    async def _run_monthly_split_download(self, task_id: str, sectors: List[str], start_date: str, end_date: str):
+    async def _run_monthly_split_download(self, task_id: str, sectors: List[str], months: List[str]):
         task = self.tasks[task_id]
         task.status = TaskStatus.RUNNING
         task.updated_at = datetime.now()
         stop_event = self.stop_events[task_id]
         
-        logger.info(f"任务 {task_id} 启动: {start_date} -> {end_date}")
+        logger.info(f"任务 {task_id} 启动: {months}")
+        
+        from calendar import monthrange
         
         try:
-            month_list = self._generate_month_ranges(start_date, end_date)
-            total_months = len(month_list)
+            total_months = len(months)
             
-            for idx, (year, month, s_str, e_str) in enumerate(month_list):
+            for idx, month_str in enumerate(months):
                 if stop_event.is_set():
                     self._mark_stopped(task)
                     return
                 
+                try:
+                    # Parse YYYYMM format
+                    # e.g. "202501" -> year=2025, month=1
+                    if len(month_str) != 6 or not month_str.isdigit():
+                         raise ValueError("Format must be YYYYMM")
+                         
+                    year = int(month_str[:4])
+                    month = int(month_str[4:])
+                    
+                    _, last_day = monthrange(year, month)
+                    s_str = f"{year}{month:02d}01"
+                    e_str = f"{year}{month:02d}{last_day}"
+                except ValueError as e:
+                    logger.error(f"Invalid month format: {month_str} ({e})")
+                    continue
+
                 # 更新状态
                 task.message = f"正在下载 {year}年{month}月 ({idx+1}/{total_months})"
                 task.updated_at = datetime.now()
