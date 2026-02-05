@@ -6,9 +6,11 @@ import pandas as pd
 import duckdb
 from loguru import logger
 
+from models.market import TABLE_REGISTRY
+
 class DuckDBStorage:
     """
-    通用数据存储管理器 (Simplified Path Structure)
+    通用数据存储管理器 (动态 Schema 版)
     """
     
     def __init__(self, root_dir: str):
@@ -24,7 +26,14 @@ class DuckDBStorage:
             logger.warning(f"[{table_name}] {year}-{month} 数据为空，跳过保存")
             return
 
-        # 1. 构建 Hive 路径: table/year=YYYY/
+        # 1. 获取注册好的 Schema (按数据类型区分)
+        # 兼容旧逻辑或通过 table_name 路由
+        data_type = "sector" if "sector" in table_name else "stock"
+        cast_columns = TABLE_REGISTRY.get(data_type)
+        if not cast_columns:
+            raise ValueError(f"无法为表 {table_name} 匹配 Schema (类型: {data_type})")
+
+        # 2. 构建目标路径 (Hive 分区结构)
         target_dir = self.root_dir / table_name / f"year={year}"
         target_dir.mkdir(parents=True, exist_ok=True)
         file_path = target_dir / f"{year}-{month:02d}.parquet"
@@ -33,41 +42,35 @@ class DuckDBStorage:
         try:
             conn.register('input_df', df)
             
-            # 2. 定义强制 schema 转换
-            cast_columns = [
-                "CAST(trade_date AS DATE) AS trade_date",
-                "CAST(sector_name AS VARCHAR) AS sector_name",
-                "CAST(open AS DOUBLE) AS open",
-                "CAST(close AS DOUBLE) AS close",
-                "CAST(high AS DOUBLE) AS high",
-                "CAST(low AS DOUBLE) AS low",
-                "CAST(volume AS UBIGINT) AS volume",
-                "CAST(amount AS DOUBLE) AS amount",
-                "CAST(amplitude AS DOUBLE) AS amplitude",
-                "CAST(pct_change AS DOUBLE) AS pct_change",
-                "CAST(change_amount AS DOUBLE) AS change_amount",
-                "CAST(turnover AS DOUBLE) AS turnover"
-            ]
-            
-            # 3. 写入 (ZSTD 压缩)
+            # 自动识别排序列
+            cols_names = [c.split(" AS ")[-1].strip() for c in cast_columns]
+            order_by = "trade_date"
+            if "sector_name" in cols_names:
+                order_by = "trade_date, sector_name"
+            elif "stock_code" in cols_names:
+                order_by = "trade_date, stock_code"
+
+            # 3. 写入 (ZSTD 压缩) - 显式选择字段以确保 Parquet 纯净 (不含分区列 year)
             sql = f"""
             COPY (
                 SELECT 
                     {', '.join(cast_columns)}
                 FROM input_df
-                ORDER BY trade_date, sector_name
+                ORDER BY {order_by}
             ) TO '{str(file_path).replace(os.sep, '/')}' 
             (FORMAT 'parquet', COMPRESSION 'ZSTD');
             """
             
+            logger.debug(f"执行存储 SQL (表: {table_name}):\n{sql}")
+
             if file_path.exists():
                 file_path.unlink()
                 
             conn.execute(sql)
-            logger.info(f"已保存月度数据: {file_path}")
+            logger.info(f"已保存月度数据 [{table_name}]: {file_path}")
 
         except Exception as e:
-            logger.error(f"Save month failed {year}-{month}: {e}")
+            logger.error(f"保存月度数据失败 [{table_name}] {year}-{month}: {e}")
             raise e
         finally:
             conn.close()

@@ -38,7 +38,7 @@ def test_save_month(temp_storage_dir):
     # Pandas usually infers well, but date needs to be date object or string consistent with casting
     # The storage implementation uses CAST(trade_date AS DATE), so string 'YYYY-MM-DD' works.
     
-    table_name = "test_sector"
+    table_name = "cn_sector_em_daily_raw"
     year = 2024
     month = 1
     

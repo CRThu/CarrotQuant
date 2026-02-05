@@ -3,57 +3,68 @@ import sys
 from pathlib import Path
 
 from services.market_manager import market_manager
-from models.market import SectorDownloadRequest
+from models.market import MarketDownloadRequest, MarketTable
 from models.task import TaskStatus
 from core.config import settings
 
-async def main():
-    print("Starting verification (Refactored)...")
-    
-    # 1. Test Component: Downloader
-    print("\n[1] Testing EastMoneyDownloader component...")
-    try:
-        df = market_manager.downloader.fetch_sector_daily("半导体", "20240101", "20240110")
-        print(f"Fetched {len(df)} rows. Columns: {df.columns.tolist()}")
-    except Exception as e:
-        print(f"Downloader failed: {e}")
-        return
-
-    # 2. Test Integration: Manager Service
-    print("\n[2] Testing MarketManager Task...")
-    req = SectorDownloadRequest(
-        sectors=["半导体", "银行"], 
-        months=["202401","202402"]
-    )
-    
-    task_id = await market_manager.start_sector_download_task(req)
-    print(f"Task started: {task_id}")
+async def run_verify_task(req: MarketDownloadRequest):
+    print(f"\n[Testing] Source: {req.source}, Type: {req.data_type}, Symbols: {req.symbols}")
+    task_id = await market_manager.start_market_download_task(req)
     
     while True:
         task = market_manager.get_task(task_id)
-        print(f"Task Status: {task.status}, Progress: {task.progress}%")
+        if not task: break
+        print(f"Status: {task.status}, Progress: {task.progress}%, Msg: {task.message}")
         if task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED]:
             break
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
         
-    if task.status != TaskStatus.COMPLETED:
-        print(f"Task Failed or Stopped: {task.message}")
-        return
-
-    # 3. Verify Storage Result
-    print("\n[3] Verifying Parquet File...")
-    # Expected path: data/dfcft-a-bk/year=2024/2024-01.parquet
-    parquet_path = Path(settings.DATA_DIR) / "dfcft-a-bk/year=2024/2024-01.parquet"
-    
-    if parquet_path.exists():
-        import duckdb
-        conn = duckdb.connect()
-        df_saved = conn.execute(f"SELECT * FROM '{parquet_path}'").df()
-        print(f"Successfully read {len(df_saved)} rows from {parquet_path}")
-        print(df_saved[['trade_date', 'sector_name', 'close']].head())
-        conn.close()
+    if task.status == TaskStatus.COMPLETED:
+        print("Task Completed Successfully.")
+        # Verify first month
+        month_str = req.months[0]
+        year = int(month_str[:4])
+        month = int(month_str[4:])
+        
+        table_name = market_manager._route_table_name(req)
+        parquet_path = Path(settings.DATA_DIR) / f"{table_name}/year={year}/{year}-{month:02d}.parquet"
+        
+        if parquet_path.exists():
+            import duckdb
+            conn = duckdb.connect()
+            df = conn.execute(f"SELECT * FROM '{parquet_path}' LIMIT 5").df()
+            print(f"Verified {parquet_path}:")
+            print(df.head())
+            conn.close()
+        else:
+            print(f"Error: Parquet file missing at {parquet_path}")
     else:
-        print(f"Error: Parquet file not found at {parquet_path}")
+        print(f"Task Failed: {task.message}")
+
+async def main():
+    print("=== CarrotQuant Professional Refactoring Verification ===")
+    
+    # 1. EM Sector Raw
+    await run_verify_task(MarketDownloadRequest(
+        source="em", data_type="sector", symbols=["半导体"], months=["202401"], adjust="raw"
+    ))
+    
+    # 2. EM Stock Adj (Professional Standard)
+    await run_verify_task(MarketDownloadRequest(
+        source="em", data_type="stock", symbols=["000001"], months=["202402"], adjust="adj"
+    ))
+    
+    # 3. Sina Stock Adj
+    await run_verify_task(MarketDownloadRequest(
+        source="sina", data_type="stock", symbols=["600519"], months=["202403"], adjust="adj"
+    ))
+
+    # 4. Test Auto-scheduling (just symbol list fetch)
+    print("\n[Testing] Auto-fetching all symbols for EM...")
+    from services.downloader.eastmoney import EastMoneyDownloader
+    dl = EastMoneyDownloader()
+    syms = dl.get_all_symbols()
+    print(f"Fetched {len(syms)} stock symbols. Example: {syms[:5]}")
 
 if __name__ == "__main__":
     if sys.platform == 'win32':
