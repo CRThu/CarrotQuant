@@ -50,16 +50,14 @@ class DuckDBStorage:
             elif "stock_code" in cols_names:
                 order_by = "trade_date, stock_code"
 
-            # 3. 写入 (ZSTD 压缩) - 显式选择字段以确保 Parquet 纯净 (不含分区列 year)
-            sql = f"""
-            COPY (
-                SELECT 
-                    {', '.join(cast_columns)}
-                FROM input_df
-                ORDER BY {order_by}
-            ) TO '{str(file_path).replace(os.sep, '/')}' 
-            (FORMAT 'parquet', COMPRESSION 'ZSTD');
-            """
+            # 3. 写入 - 调用中心化构建器
+            from core.sql_builder import build_save_parquet_sql
+            sql = build_save_parquet_sql(
+                source_df_name='input_df', 
+                cast_columns=cast_columns, 
+                order_by=order_by, 
+                file_path=str(file_path)
+            )
             
             logger.debug(f"执行存储 SQL (表: {table_name}):\n{sql}")
 

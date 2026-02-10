@@ -60,11 +60,12 @@ async def main():
     ))
 
     # 4. Test Auto-scheduling (just symbol list fetch)
-    print("\n[Testing] Auto-fetching all symbols for EM...")
+    print("\n[Testing] Auto-fetching (Sample Top 10) symbols for EM...")
     from services.downloader.eastmoney import EastMoneyDownloader
     dl = EastMoneyDownloader()
     syms = dl.get_all_symbols()
-    print(f"Fetched {len(syms)} stock symbols. Example: {syms[:5]}")
+    test_syms = syms[:10]  # 仅取前 10 个以加快验证
+    print(f"Fetched {len(syms)} stock symbols. Testing Sample: {test_syms}")
 
 if __name__ == "__main__":
     if sys.platform == 'win32':
