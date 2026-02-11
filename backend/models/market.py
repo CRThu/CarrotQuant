@@ -12,20 +12,45 @@ class MarketTable:
     CN_SECTOR_EM_DAILY_RAW = "cn_sector_em_daily_raw"   # 东财板块-日线-原始
     CN_STOCK_SINA_DAILY_ADJ = "cn_stock_sina_daily_adj" # 新浪个股-日线-后复权
 
-# 全局 Schema 注册表：定义 DuckDB 加载模式与清洗规则
+# 全局 Schema 权威注册中心：定义系统中所有可能出现字段的“权威类型”
+DATA_SCHEMA = {
+    "trade_date": "DATE",           # 交易日期
+    "stock_code": "VARCHAR",        # 股票代码
+    "sector_name": "VARCHAR",       # 板块名称
+    "open": "DOUBLE",               # 开盘价
+    "close": "DOUBLE",              # 收盘价
+    "high": "DOUBLE",               # 最高价
+    "low": "DOUBLE",                # 最低价
+    "volume": "DOUBLE",             # 成交量 (单位: 股)
+    "amount": "DOUBLE",             # 成交额 (单位: 元)
+    "amplitude": "DOUBLE",          # 振幅 (%)
+    "pct_change": "DOUBLE",         # 涨跌幅 (%)
+    "change_amount": "DOUBLE",      # 涨跌额
+    "turnover": "DOUBLE",           # 换手率 (%)
+    "outstanding_share": "DOUBLE"   # 流通股本 (股)
+}
+
+# 全局模型注册表：定义 DuckDB 加载模式与清洗规则
 # load_mode: matrix (行情矩阵), mapping (字段映射)
 TABLE_REGISTRY = {
     "cn_stock_em_daily_adj": {
         "load_mode": "matrix",
         "id_col": "stock_code",
-        "fields": ["open", "close", "high", "low", "volume", "amount", "pct_change", "turnover"],
+        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
         "ffill_cols": ["open", "close", "high", "low"],
         "zerofill_cols": ["volume", "amount", "turnover"]
     },
     "cn_sector_em_daily_raw": {
         "load_mode": "matrix",
         "id_col": "sector_name",
-        "fields": ["open", "close", "high", "low", "volume", "amount", "pct_change", "turnover"],
+        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"]
+    },
+    "cn_stock_sina_daily_adj": {
+        "load_mode": "matrix",
+        "id_col": "stock_code",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "outstanding_share", "turnover"],
         "ffill_cols": ["open", "close", "high", "low"],
         "zerofill_cols": ["volume", "amount", "turnover"]
     },
@@ -33,36 +58,7 @@ TABLE_REGISTRY = {
         "load_mode": "mapping",
         "id_col": "stock_code",
         "val_col": "sector_name"
-    },
-    # 存储规范：用于 DuckDB COPY 时的类型转换与字段选择
-    "sector": [
-        "CAST(trade_date AS DATE) AS trade_date",
-        "CAST(sector_name AS VARCHAR) AS sector_name",
-        "CAST(open AS DOUBLE) AS open",
-        "CAST(close AS DOUBLE) AS close",
-        "CAST(high AS DOUBLE) AS high",
-        "CAST(low AS DOUBLE) AS low",
-        "CAST(volume AS BIGINT) AS volume",
-        "CAST(amount AS DOUBLE) AS amount",
-        "CAST(amplitude AS DOUBLE) AS amplitude",
-        "CAST(pct_change AS DOUBLE) AS pct_change",
-        "CAST(change_amount AS DOUBLE) AS change_amount",
-        "CAST(turnover AS DOUBLE) AS turnover"
-    ],
-    "stock": [
-        "CAST(trade_date AS DATE) AS trade_date",
-        "CAST(stock_code AS VARCHAR) AS stock_code",
-        "CAST(open AS DOUBLE) AS open",
-        "CAST(close AS DOUBLE) AS close",
-        "CAST(high AS DOUBLE) AS high",
-        "CAST(low AS DOUBLE) AS low",
-        "CAST(volume AS BIGINT) AS volume",
-        "CAST(amount AS DOUBLE) AS amount",
-        "CAST(amplitude AS DOUBLE) AS amplitude",
-        "CAST(pct_change AS DOUBLE) AS pct_change",
-        "CAST(change_amount AS DOUBLE) AS change_amount",
-        "CAST(turnover AS DOUBLE) AS turnover"
-    ]
+    }
 }
 
 class MarketDownloadRequest(BaseModel):

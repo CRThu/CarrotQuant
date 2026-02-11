@@ -68,17 +68,30 @@ def build_metadata_sql(table_path: str) -> str:
         FROM read_parquet('{table_path}/**/*.parquet', hive_partitioning=true)
     """
 
-def build_save_parquet_sql(source_df_name: str, cast_columns: list, order_by: str, file_path: str) -> str:
+from models.market import DATA_SCHEMA
+
+def build_save_parquet_sql(source_df_name: str, actual_columns: list, order_by: str, file_path: str) -> str:
     """
-    拼装数据存储 SQL：通过 COPY 指令将 DataFrame 写入 Parquet
+    拼装数据存储 SQL：通过 COPY 指令将 DataFrame 写入 Parquet。
+    采用动态 CAST 机制，确保类型严肃性与保真。
     """
-    # 统一 COMPRESSION 'ZSTD' 规范
+    cast_exprs = []
+    for col in actual_columns:
+        # 强制 Schema 注册检查
+        if col not in DATA_SCHEMA:
+            raise KeyError(f"字段 '{col}' 未在 DATA_SCHEMA 中注册，请先在 models/market.py 中定义其类型。存储已拒绝以保证 Schema 严肃性。")
+        
+        # 安全性处理：使用双引号包裹字段名以防特殊字符
+        sql_type = DATA_SCHEMA[col]
+        cast_exprs.append(f'CAST("{col}" AS {sql_type}) AS "{col}"')
+
     # 路径处理：将 Windows 的 \ 替换为 / 以防 DuckDB 报错
     safe_path = file_path.replace("\\", "/")
+    
     return f"""
         COPY (
             SELECT 
-                {', '.join(cast_columns)}
+                {', '.join(cast_exprs)}
             FROM {source_df_name}
             ORDER BY {order_by}
         ) TO '{safe_path}' 

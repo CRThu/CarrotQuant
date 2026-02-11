@@ -30,13 +30,19 @@ class SinaDownloader(BaseDownloader):
                 adjust=ak_adjust if ak_adjust else "no" # ak 接口要求 'no' 代表不复权
             )
             
-            # 修正：新浪接口 stock_zh_a_daily 返回的是已经处理过的英文列名
-            df = df.rename(columns={"date": "trade_date"})
-            
-            # 补齐缺失列
-            for col in ["amount", "amplitude", "pct_change", "change_amount", "turnover"]:
-                if col not in df.columns:
-                    df[col] = 0.0
+            # 映射 CarrotQuant 术语
+            rename_map = {
+                "date": "trade_date",
+                "open": "open",
+                "close": "close",
+                "high": "high",
+                "low": "low",
+                "volume": "volume",
+                "amount": "amount",
+                "turnover": "turnover",
+                "outstanding_share": "outstanding_share"
+            }
+            df = df.rename(columns=rename_map)
             
             # 后处理
             df['trade_date'] = pd.to_datetime(df['trade_date']).dt.date

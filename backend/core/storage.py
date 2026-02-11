@@ -26,12 +26,8 @@ class DuckDBStorage:
             logger.warning(f"[{table_name}] {year}-{month} 数据为空，跳过保存")
             return
 
-        # 1. 获取注册好的 Schema (按数据类型区分)
-        # 兼容旧逻辑或通过 table_name 路由
-        data_type = "sector" if "sector" in table_name else "stock"
-        cast_columns = TABLE_REGISTRY.get(data_type)
-        if not cast_columns:
-            raise ValueError(f"无法为表 {table_name} 匹配 Schema (类型: {data_type})")
+        # 1. 获取实际字段
+        actual_fields = df.columns.tolist()
 
         # 2. 构建目标路径 (Hive 分区结构)
         target_dir = self.root_dir / table_name / f"year={year}"
@@ -43,18 +39,17 @@ class DuckDBStorage:
             conn.register('input_df', df)
             
             # 自动识别排序列
-            cols_names = [c.split(" AS ")[-1].strip() for c in cast_columns]
             order_by = "trade_date"
-            if "sector_name" in cols_names:
+            if "sector_name" in actual_fields:
                 order_by = "trade_date, sector_name"
-            elif "stock_code" in cols_names:
+            elif "stock_code" in actual_fields:
                 order_by = "trade_date, stock_code"
 
             # 3. 写入 - 调用中心化构建器
             from core.sql_builder import build_save_parquet_sql
             sql = build_save_parquet_sql(
                 source_df_name='input_df', 
-                cast_columns=cast_columns, 
+                actual_columns=actual_fields, 
                 order_by=order_by, 
                 file_path=str(file_path)
             )

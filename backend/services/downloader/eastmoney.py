@@ -45,6 +45,7 @@ class EastMoneyDownloader(BaseDownloader):
             df = df.rename(columns=rename_map)
             
             # 后处理
+            df['volume'] = df['volume'].astype("float64") * 100.0 # 统一单位为“股”
             df['trade_date'] = pd.to_datetime(df['trade_date']).dt.date
             df['sector_name'] = sector_name
             return df
@@ -88,6 +89,7 @@ class EastMoneyDownloader(BaseDownloader):
             df = df.rename(columns=rename_map)
             
             # 后处理
+            df['volume'] = df['volume'].astype("float64") * 100.0 # 统一单位为“股”
             df['trade_date'] = pd.to_datetime(df['trade_date']).dt.date
             df['stock_code'] = symbol
             return df
