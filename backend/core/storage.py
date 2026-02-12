@@ -67,3 +67,54 @@ class DuckDBStorage:
             raise e
         finally:
             conn.close()
+    def save_snapshot(self, df: pd.DataFrame, table_name: str):
+        """
+        保存全量快照数据 (非分区模式)。
+        Path: {root}/{table_name}/{table_name}.parquet
+        """
+        if df.empty:
+            logger.warning(f"[{table_name}] 数据为空，取消快照保存")
+            return
+
+        # 1. 唯一性去重
+        df = df.drop_duplicates()
+
+        # 2. 构建目标路径
+        target_dir = self.root_dir / table_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_path = target_dir / f"{table_name}.parquet"
+
+        conn = duckdb.connect()
+        try:
+            conn.register('input_df', df)
+            
+            # 自动识别排序列
+            actual_fields = df.columns.tolist()
+            order_by = actual_fields[0] # 快照表通常按首列(ID列)排序
+            if "stock_code" in actual_fields:
+                order_by = "stock_code"
+            elif "sector_name" in actual_fields:
+                order_by = "sector_name"
+
+            # 3. 写入 - 调用中心化构建器
+            from core.sql_builder import build_save_table_sql
+            sql = build_save_table_sql(
+                source_df_name='input_df', 
+                actual_columns=actual_fields, 
+                order_by=order_by, 
+                file_path=str(file_path)
+            )
+            
+            logger.debug(f"执行快照存储 SQL (表: {table_name}):\n{sql}")
+
+            if file_path.exists():
+                file_path.unlink()
+                
+            conn.execute(sql)
+            logger.info(f"已保存全量快照 [{table_name}]: {file_path}")
+
+        except Exception as e:
+            logger.error(f"保存快照数据失败 [{table_name}]: {e}")
+            raise e
+        finally:
+            conn.close()

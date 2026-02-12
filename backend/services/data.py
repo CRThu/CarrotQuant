@@ -26,30 +26,44 @@ class DataManager:
         logger.info(f"配置驱动双轨加载引擎启动。根目录: {settings.DATA_DIR}")
 
     def get_storage_metadata(self) -> Dict[str, Dict]:
-        """元数据审计：直接从数据文件中提取统计信息"""
+        """
+        元数据审计：基于配置中心 (TABLE_REGISTRY) 进行 O(1) 路径检查。
+        严禁扫描整个 data 目录。
+        """
+        from models.market import TABLE_REGISTRY
         metadata = {}
-        if not os.path.exists(settings.DATA_DIR): 
-            return metadata
 
-        for entry in os.scandir(settings.DATA_DIR):
-            if entry.is_dir():
-                t_name, t_path = entry.name, entry.path
-                try:
-                    # 使用中心化 SQL 构建器进行审计统计
-                    from core.sql_builder import build_metadata_sql
-                    sql = build_metadata_sql(t_path)
-                    res = self.conn.execute(sql).fetchone()
-                    
-                    if res and res[0] is not None:
-                        metadata[t_name] = {
-                            "start_date": res[0],
-                            "end_date": res[1],
-                            "row_count": res[2],
-                            "path": t_path
-                        }
-                except Exception as e:
-                    logger.warning(f"审计表 {t_name} 失败: {e}")
-                    continue
+        for t_name, config in TABLE_REGISTRY.items():
+            storage_type = config.get("storage_type", "partition")
+            
+            # 路径定义
+            if storage_type == "snapshot":
+                # 快照模式：路径固定为 data/{table}/{table}.parquet
+                t_path = os.path.join(settings.DATA_DIR, t_name, f"{t_name}.parquet")
+            else:
+                # 分区模式：路径为 data/{table}/
+                t_path = os.path.join(settings.DATA_DIR, t_name)
+
+            if not os.path.exists(t_path):
+                continue
+
+            try:
+                # 使用中心化 SQL 构建器进行审计统计
+                from core.sql_builder import build_metadata_sql
+                sql = build_metadata_sql(t_path)
+                res = self.conn.execute(sql).fetchone()
+                
+                if res and res[2] > 0: # row_count > 0
+                    metadata[t_name] = {
+                        "start_date": res[0],
+                        "end_date": res[1],
+                        "row_count": res[2],
+                        "path": t_path,
+                        "storage_type": storage_type
+                    }
+            except Exception as e:
+                logger.warning(f"审计表 {t_name} 失败 (路径: {t_path}): {e}")
+                continue
         return metadata
 
     def load_market_data(self, 
@@ -73,20 +87,26 @@ class DataManager:
                 logger.warning(f"表 {t_name} 未在 TABLE_REGISTRY 中注册，跳过。")
                 continue
 
-            # 确定有效的 Parquet 路径
-            # 直接扫描目录获取年份子文件夹
-            year_dirs = [d for d in os.listdir(meta[t_name]["path"]) if d.startswith("year=")]
-            years = []
-            for d in year_dirs:
-                try:
-                    y = int(d.split("=")[1])
-                    if start_date.year <= y <= end_date.year:
-                        years.append(y)
-                except: continue
+            storage_type = meta[t_name].get("storage_type", "partition")
+            
+            if storage_type == "snapshot":
+                # 快照模式：直接使用单一 Parquet 文件
+                parquet_paths = [meta[t_name]["path"]]
+            else:
+                # 分区模式：根据年份加载多个文件
+                t_dir = meta[t_name]["path"]
+                year_dirs = [d for d in os.listdir(t_dir) if d.startswith("year=")]
+                years = []
+                for d in year_dirs:
+                    try:
+                        y = int(d.split("=")[1])
+                        if start_date.year <= y <= end_date.year:
+                            years.append(y)
+                    except: continue
 
-            if not years:
-                raise DataNotFoundError(t_name, start_date, end_date)
-            parquet_paths = [os.path.join(meta[t_name]["path"], f"year={y}", "*.parquet") for y in years]
+                if not years:
+                    raise DataNotFoundError(t_name, start_date, end_date)
+                parquet_paths = [os.path.join(t_dir, f"year={y}", "*.parquet") for y in years]
 
             # 双轨分流
             if config["load_mode"] == "matrix":
@@ -155,13 +175,31 @@ class DataManager:
     def _load_mapping_track(self, t_name, config, paths, start_date, end_date, symbols) -> TableData:
         """
         映射轨：获取标签映射 (如 股票->板块)
+        支持 1-to-1 与 1-to-many 自动切换
         """
         id_col, val_col = config["id_col"], config["val_col"]
-        sql = build_select_sql(t_name, paths, [id_col, val_col], str(start_date), str(end_date), {"stock_code": symbols} if symbols else None)
+        # 注意：此处 filters 暂时硬编码为 stock_code，未来可根据 config 扩展
+        sql = build_select_sql(t_name, paths, [id_col, val_col], str(start_date), str(end_date), {id_col: symbols} if symbols else None)
         
         res = self.conn.execute(sql).fetchnumpy()
-        # 转换为字典: {id: val}
-        mapping = {k: v for k, v in zip(res[id_col], res[val_col])}
+        id_arr, val_arr = res[id_col], res[val_col]
+
+        if len(id_arr) == 0:
+            return TableData(name=t_name, data={})
+
+        # 自动探测是否为一对多映射
+        # 如果 ID 数量多于唯一 ID 数量，则进入一对多逻辑
+        mapping = {}
+        unique_ids = set(id_arr)
+        if len(unique_ids) < len(id_arr):
+            # 一对多：Dict[ID, List[Value]]
+            for k, v in zip(id_arr, val_arr):
+                if k not in mapping:
+                    mapping[k] = []
+                mapping[k].append(v)
+        else:
+            # 一对一：Dict[ID, Value]
+            mapping = {k: v for k, v in zip(id_arr, val_arr)}
         
         return TableData(name=t_name, data=mapping)
 

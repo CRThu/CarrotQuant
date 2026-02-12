@@ -28,92 +28,80 @@ class MarketDataManager:
         self.stop_events: Dict[str, asyncio.Event] = {}
         
     async def start_market_download_task(self, request: MarketDownloadRequest) -> str:
-        """启动市场数据下载任务 (支持全市场自动调度)"""
+        """启动市场数据下载任务 (完全由 TABLE_REGISTRY 驱动)"""
         task_id = str(uuid.uuid4())
         
-        # 1. 路由与验证
-        downloader = self.downloaders.get(request.source)
+        # 1. 验证表是否存在
+        from models.market import TABLE_REGISTRY
+        if request.table_name not in TABLE_REGISTRY:
+            raise ValueError(f"不受支持的表名: {request.table_name}")
+            
+        config = TABLE_REGISTRY[request.table_name]
+        download_cfg = config.get("download_config")
+        if not download_cfg:
+            raise ValueError(f"表 {request.table_name} 未配置下载参数")
+
+        # 2. 获取下载器与配置
+        source = download_cfg["source"]
+        downloader = self.downloaders.get(source)
         if not downloader:
-            raise ValueError(f"不受支持的数据源: {request.source}")
+            raise ValueError(f"不受支持的数据源: {source}")
             
+        storage_type = config.get("storage_type", "partition")
         symbols = request.symbols
-        if not symbols:
-            # 全市场自动获取
-            if request.data_type == "sector":
-                logger.info(f"[{request.source}] 未指定板块，准备抓取全市场板块列表...")
-                symbols = downloader.get_all_sectors()
-            else:
-                logger.info(f"[{request.source}] 未指定个股，准备抓取全市场 A 股列表...")
-                symbols = downloader.get_all_symbols()
-            
-        if not symbols:
-            raise ValueError("未能获取到下载标的列表")
-            
+        
+        # 3. 自动计算 Symbols (如果未指定且为分区表)
+        if not symbols and storage_type == "partition":
+             if "sector" in request.table_name:
+                 symbols = downloader.get_all_sectors()
+             else:
+                 symbols = downloader.get_all_symbols()
+
         task = DownloadTask(
             task_id=task_id, 
             status=TaskStatus.PENDING, 
-            message=f"[{request.source}/{request.data_type}/{request.adjust}] 计划下载 {len(symbols)} 个标的"
+            message=f"[{request.table_name}] 计划启动任务 (Storage: {storage_type})"
         )
         self.tasks[task_id] = task
         self.stop_events[task_id] = asyncio.Event()
         
-        # 2. 启动异步处理
-        asyncio.create_task(
-            self._run_monthly_split_download(task_id, downloader, symbols, request)
-        )
+        # 4. 驱动异步处理
+        if storage_type == "snapshot":
+            asyncio.create_task(
+                self._run_snapshot_download(task_id, downloader, request.table_name, download_cfg)
+            )
+        else:
+            asyncio.create_task(
+                self._run_partition_download(task_id, downloader, symbols, request.table_name, download_cfg, request.months)
+            )
         
         return task_id
 
-    async def _run_monthly_split_download(self, task_id: str, downloader: BaseDownloader, symbols: List[str], request: MarketDownloadRequest):
+    async def _run_snapshot_download(self, task_id: str, downloader: BaseDownloader, table_name: str, download_cfg: dict):
+        """执行快照下载"""
         task = self.tasks[task_id]
         task.status = TaskStatus.RUNNING
         task.updated_at = datetime.now()
-        stop_event = self.stop_events[task_id]
-        
-        # 路由确定规范化表名: {市场}_{品种}_{来源}_{频率}_{复权}
-        table_name = self._route_table_name(request)
-        
-        logger.info(f"任务 {task_id} 启动 | 源: {request.source} | 类型: {request.data_type} | 复权: {request.adjust} | 标的数: {len(symbols)}")
         
         try:
-            total_months = len(request.months)
-            for idx, month_str in enumerate(request.months):
-                if stop_event.is_set():
-                    self._mark_stopped(task)
-                    return
-                
-                # 1. 解析日期
-                try:
-                    s_str, e_str, year, month = self._get_date_range(month_str)
-                except ValueError as e:
-                    logger.error(f"日期格式错误 {month_str}: {e}")
-                    continue
-
-                # 2. 更新进度状态
-                task.message = f"正在下载 {year}年{month}月 ({idx+1}/{total_months})"
-                task.updated_at = datetime.now()
-                logger.info(f"[{request.source}] 正在处理 {year}-{month} | 目标表: {table_name}")
-                
-                # 3. 符号循环单元 (透传 adjust)
-                monthly_buffer = await self._download_monthly_chunk(
-                    downloader, symbols, request.data_type, s_str, e_str, request.adjust, stop_event
-                )
-                
-                # 4. 存储层
-                if monthly_buffer:
-                    full_df = pd.concat(monthly_buffer)
-                    await asyncio.to_thread(
-                        self.storage.save_month, 
-                        df=full_df, 
-                        table_name=table_name, 
-                        year=year, 
-                        month=month
-                    )
-                
-                task.progress = round(((idx + 1) / total_months) * 100, 2)
+            handler_name = download_cfg["handler"]
+            handler = getattr(downloader, handler_name)
             
+            task.message = f"正在拉取 {table_name} 全量快照..."
+            # 兼容异步/同步方法 (如 fetch_stock_sector_map 是 async)
+            if asyncio.iscoroutinefunction(handler):
+                df = await handler()
+            else:
+                df = await asyncio.to_thread(handler)
+            
+            if df.empty:
+                raise ValueError(f"下载器返回数据为空")
+
+            await asyncio.to_thread(self.storage.save_snapshot, df=df, table_name=table_name)
+            
+            task.progress = 100.0
             task.status = TaskStatus.COMPLETED
-            task.message = f"全部下载完成 (共 {total_months} 月)"
+            task.message = f"快照下载完成"
             
         except Exception as e:
             task.status = TaskStatus.FAILED
@@ -123,30 +111,58 @@ class MarketDataManager:
             task.updated_at = datetime.now()
             self.stop_events.pop(task_id, None)
 
-    async def _download_monthly_chunk(self, downloader: BaseDownloader, symbols: List[str], data_type: str, s_str: str, e_str: str, adjust: str, stop_event: asyncio.Event) -> List[pd.DataFrame]:
-        """单月标的循环下载逻辑 (带 0.1s 流控)"""
-        buffer = []
-        for i, symbol in enumerate(symbols):
-            if stop_event.is_set():
-                break
-            
-            try:
-                logger.debug(f"[{downloader.__class__.__name__}] 抓取 [{data_type}/{adjust}] {symbol} ({s_str}-{e_str})")
+    async def _run_partition_download(self, task_id: str, downloader: BaseDownloader, symbols: List[str], table_name: str, download_cfg: dict, months: List[str]):
+        """执行分区表下载"""
+        task = self.tasks[task_id]
+        task.status = TaskStatus.RUNNING
+        task.updated_at = datetime.now()
+        stop_event = self.stop_events[task_id]
+        
+        if not months:
+            months = [datetime.now().strftime("%Y%m")]
+
+        try:
+            handler_name = download_cfg["handler"]
+            adjust = download_cfg.get("adjust", "raw")
+            total_months = len(months)
+
+            for idx, month_str in enumerate(months):
+                if stop_event.is_set():
+                    self._mark_stopped(task)
+                    return
                 
-                if data_type == "sector":
-                    df = await asyncio.to_thread(downloader.fetch_sector_daily, symbol, s_str, e_str, adjust)
-                else:
-                    df = await asyncio.to_thread(downloader.fetch_stock_daily, symbol, s_str, e_str, adjust)
+                s_str, e_str, year, month = self._get_date_range(month_str)
+                task.message = f"正在下载 {year}年{month}月 ({idx+1}/{total_months})"
+                task.updated_at = datetime.now()
                 
-                if not df.empty:
-                    buffer.append(df)
-            except Exception as e:
-                logger.error(f"标的 {symbol} 下载失败: {e}")
+                # 符号循环抓取
+                monthly_buffer = []
+                for i, symbol in enumerate(symbols):
+                    if stop_event.is_set(): break
+                    try:
+                        handler = getattr(downloader, handler_name)
+                        df = await asyncio.to_thread(handler, symbol, s_str, e_str, adjust)
+                        if not df.empty: monthly_buffer.append(df)
+                    except Exception as e:
+                        logger.error(f"标的 {symbol} 下载失败: {e}")
+                    await asyncio.sleep(0.1)
+
+                if monthly_buffer:
+                    full_df = pd.concat(monthly_buffer)
+                    await asyncio.to_thread(self.storage.save_month, df=full_df, table_name=table_name, year=year, month=month)
+                
+                task.progress = round(((idx + 1) / total_months) * 100, 2)
             
-            # 5. 专业流控: 0.1s 延迟
-            await asyncio.sleep(0.1)
+            task.status = TaskStatus.COMPLETED
+            task.message = "分区数据下载完成"
             
-        return buffer
+        except Exception as e:
+            task.status = TaskStatus.FAILED
+            task.message = f"任务出错: {str(e)}"
+            logger.exception(f"任务 {task_id} 异常")
+        finally:
+            task.updated_at = datetime.now()
+            self.stop_events.pop(task_id, None)
 
     def _get_date_range(self, month_str: str):
         """YYYYMM -> (s_str, e_str, year, month)"""
@@ -157,14 +173,6 @@ class MarketDataManager:
         _, last_day = monthrange(year, month)
         return f"{year}{month:02d}01", f"{year}{month:02d}{last_day}", year, month
 
-    def _route_table_name(self, request: MarketDownloadRequest) -> str:
-        """
-        根据源、类型、复权动态路由规范表名
-        命名规范: {市场}_{品种}_{来源}_{频率}_{复权}
-        """
-        market = "cn" # 目前主要为中国市场
-        freq = "daily"
-        return f"{market}_{request.data_type}_{request.source}_{freq}_{request.adjust}"
 
     def _mark_stopped(self, task):
         task.status = TaskStatus.STOPPED

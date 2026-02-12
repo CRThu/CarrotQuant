@@ -16,7 +16,10 @@ class MarketTable:
 DATA_SCHEMA = {
     "trade_date": "DATE",           # 交易日期
     "stock_code": "VARCHAR",        # 股票代码
+    "stock_name": "VARCHAR",        # 股票名称
     "sector_name": "VARCHAR",       # 板块名称
+    "concept_name": "VARCHAR",      # 概念名称
+    "industry_name": "VARCHAR",     # 行业名称
     "open": "DOUBLE",               # 开盘价
     "close": "DOUBLE",              # 收盘价
     "high": "DOUBLE",               # 最高价
@@ -30,53 +33,103 @@ DATA_SCHEMA = {
     "outstanding_share": "DOUBLE"   # 流通股本 (股)
 }
 
-# 全局模型注册表：定义 DuckDB 加载模式与清洗规则
+# 全局模型注册表：定义 DuckDB 加载模式、存储类型以及下载配置
 # load_mode: matrix (行情矩阵), mapping (字段映射)
+# storage_type: snapshot (快照), partition (分区)
 TABLE_REGISTRY = {
+    # --- 分区表 (Partition Tables) ---
     "cn_stock_em_daily_adj": {
         "load_mode": "matrix",
+        "storage_type": "partition",
         "id_col": "stock_code",
         "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
         "ffill_cols": ["open", "close", "high", "low"],
-        "zerofill_cols": ["volume", "amount", "turnover"]
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "em", "handler": "fetch_stock_daily", "adjust": "adj"}
     },
-    "cn_sector_em_daily_raw": {
+    "cn_stock_em_daily_raw": {
         "load_mode": "matrix",
-        "id_col": "sector_name",
+        "storage_type": "partition",
+        "id_col": "stock_code",
         "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
         "ffill_cols": ["open", "close", "high", "low"],
-        "zerofill_cols": ["volume", "amount", "turnover"]
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "em", "handler": "fetch_stock_daily", "adjust": "raw"}
     },
     "cn_stock_sina_daily_adj": {
         "load_mode": "matrix",
+        "storage_type": "partition",
         "id_col": "stock_code",
         "fields": ["open", "close", "high", "low", "volume", "amount", "outstanding_share", "turnover"],
         "ffill_cols": ["open", "close", "high", "low"],
-        "zerofill_cols": ["volume", "amount", "turnover"]
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "sina", "handler": "fetch_stock_daily", "adjust": "adj"}
+    },
+    "cn_stock_sina_daily_raw": {
+        "load_mode": "matrix",
+        "storage_type": "partition",
+        "id_col": "stock_code",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "outstanding_share", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "sina", "handler": "fetch_stock_daily", "adjust": "raw"}
+    },
+    "cn_sector_em_daily_raw": {
+        "load_mode": "matrix",
+        "storage_type": "partition",
+        "id_col": "sector_name",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "em", "handler": "fetch_sector_daily", "adjust": "raw"}
+    },
+    "cn_sector_em_daily_adj": {
+        "load_mode": "matrix",
+        "storage_type": "partition",
+        "id_col": "sector_name",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "em", "handler": "fetch_sector_daily", "adjust": "adj"}
     },
     "stock_sector_map": {
         "load_mode": "mapping",
+        "storage_type": "partition",
         "id_col": "stock_code",
-        "val_col": "sector_name"
+        "val_col": "sector_name",
+        "download_config": {"source": "em", "handler": "fetch_stock_sector_map"}
+    },
+    # --- 快照表 (Snapshot Tables) ---
+    "cn_stock_em": {
+        "load_mode": "mapping",
+        "storage_type": "snapshot",
+        "id_col": "stock_code",
+        "val_col": "stock_name",
+        "download_config": {"source": "em", "handler": "fetch_stock_info"}
+    },
+    "cn_sector_em": {
+        "load_mode": "mapping",
+        "storage_type": "snapshot",
+        "id_col": "sector_name",
+        "val_col": "sector_name",
+        "download_config": {"source": "em", "handler": "fetch_sector_info"}
+    },
+    "cn_concept_em": {
+        "load_mode": "mapping",
+        "storage_type": "snapshot",
+        "id_col": "concept_name",
+        "val_col": "concept_name",
+        "download_config": {"source": "em", "handler": "fetch_concept_info"}
     }
 }
 
 class MarketDownloadRequest(BaseModel):
     """
-    行情下载请求参数 (统一支持个股与板块)
+    行情下载请求参数 (以表名为核心)
     """
+    table_name: str                      # 目标表名 (如: cn_stock_em_daily_adj)
     symbols: Optional[List[str]] = None  # 为空时自动获取全市场/全板块
-    months: List[str] = ["202501"]        # YYYYMM 格式
-    source: str = "em"                   # 数据源: em (东财), sina (新浪)
-    data_type: str = "sector"            # 数据类型: sector (板块), stock (个股)
-    adjust: str = "adj"                  # 复权类型: adj (后复权), raw (不复权). 彻底废弃 qfq
-
-    @field_validator("adjust")
-    @classmethod
-    def validate_adjust(cls, v):
-        if v not in ["adj", "raw"]:
-            raise ValueError("adjust 必须为 'adj' (后复权) 或 'raw' (不复权)")
-        return v
+    months: Optional[List[str]] = None   # YYYYMM 格式 (Snapshot 表可为空)
 
 class MarketQueryRequest(BaseModel):
     """
@@ -125,6 +178,24 @@ class TableData:
             return self.data[t_idx, s_idx]
             
         raise IndexError(f"TableData '{self.name}' 访问方式错误 (Key: {key})")
+
+    def get_value(self, key, default=None):
+        """
+        获取单值 (用于 1-to-1 映射)
+        """
+        if not isinstance(self.data, dict):
+            return default
+        return self.data.get(key, default)
+
+    def get_list(self, key) -> list:
+        """
+        获取列表 (用于 1-to-many 映射)
+        确保永不返回 None，方便直接 for 循环
+        """
+        if not isinstance(self.data, dict):
+            return []
+        res = self.data.get(key, [])
+        return res if isinstance(res, list) else [res]
 
     def to_dict(self) -> dict:
         return {

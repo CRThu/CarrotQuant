@@ -37,15 +37,21 @@ class BaseDownloader(ABC):
         pass
 
     @abstractmethod
-    def get_all_sectors(self) -> List[str]:
-        """
-        获取所有板块列表。
-        """
+    def fetch_stock_info(self) -> pd.DataFrame:
+        """获取 A 股基础信息快照"""
         pass
 
     @abstractmethod
-    def get_all_symbols(self) -> List[str]:
-        """
-        获取所有股票代码列表。
-        """
+    def fetch_sector_info(self) -> pd.DataFrame:
+        """获取行业板块基础信息"""
+        pass
+
+    @abstractmethod
+    def fetch_concept_info(self) -> pd.DataFrame:
+        """获取概念板块基础信息"""
+        pass
+
+    @abstractmethod
+    async def fetch_stock_sector_map(self) -> pd.DataFrame:
+        """获取股票与行业的映射关系"""
         pass

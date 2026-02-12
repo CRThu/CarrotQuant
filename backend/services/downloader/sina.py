@@ -57,15 +57,16 @@ class SinaDownloader(BaseDownloader):
         logger.warning("SinaDownloader does not support sector data.")
         return pd.DataFrame()
 
-    def get_all_sectors(self) -> List[str]:
-        return []
+    def fetch_stock_info(self) -> pd.DataFrame:
+        """Sina 暂不作为基础信息源"""
+        logger.warning("SinaDownloader does not support fetch_stock_info.")
+        return pd.DataFrame()
 
-    def get_all_symbols(self) -> List[str]:
-        """获取全量 A 股代码 (通过新浪实时接口获取代码列表)"""
-        try:
-            # 使用新浪 A 股实时行情接口获取全市场代码
-            df = ak.stock_zh_a_spot()
-            return df['代码'].tolist()
-        except Exception as e:
-            logger.error(f"Error fetching symbols from Sina: {e}")
-            return []
+    def fetch_sector_info(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def fetch_concept_info(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    async def fetch_stock_sector_map(self) -> pd.DataFrame:
+        return pd.DataFrame()

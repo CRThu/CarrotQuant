@@ -59,41 +59,64 @@ def build_metadata_sql(table_path: str) -> str:
     """
     拼装元数据审计 SQL：提取精确的时间范围和行数统计
     """
-    # 统一使用 read_parquet 深度扫描，hive_partitioning=true 识别分区结构
+    # 路径处理：兼容 Windows 路径并支持单文件
+    safe_path = table_path.replace("\\", "/")
+    if safe_path.endswith(".parquet"):
+        from_clause = f"read_parquet('{safe_path}')"
+    else:
+        from_clause = f"read_parquet('{safe_path}/**/*.parquet', hive_partitioning=true)"
+    
     return f"""
         SELECT 
-            MIN(trade_date)::VARCHAR as start_date, 
-            MAX(trade_date)::VARCHAR as end_date, 
+            -- 兼容无 trade_date 的表 (快照表可能只有元数据)
+            CASE WHEN COUNT(*) > 0 THEN MIN(trade_date)::VARCHAR ELSE NULL END as start_date, 
+            CASE WHEN COUNT(*) > 0 THEN MAX(trade_date)::VARCHAR ELSE NULL END as end_date, 
             COUNT(*)::INTEGER as row_count 
-        FROM read_parquet('{table_path}/**/*.parquet', hive_partitioning=true)
+        FROM {from_clause}
     """
 
 from models.market import DATA_SCHEMA
 
 def build_save_parquet_sql(source_df_name: str, actual_columns: list, order_by: str, file_path: str) -> str:
     """
-    拼装数据存储 SQL：通过 COPY 指令将 DataFrame 写入 Parquet。
-    采用动态 CAST 机制，确保类型严肃性与保真。
+    专门拼装分区数据(save_month)存储 SQL。
+    包含 year 分区键的处理。
     """
     cast_exprs = []
     for col in actual_columns:
-        # 强制 Schema 注册检查
+        if col == "year":
+            cast_exprs.append(f'CAST("year" AS INTEGER) AS "year"')
+            continue
         if col not in DATA_SCHEMA:
-            raise KeyError(f"字段 '{col}' 未在 DATA_SCHEMA 中注册，请先在 models/market.py 中定义其类型。存储已拒绝以保证 Schema 严肃性。")
-        
-        # 安全性处理：使用双引号包裹字段名以防特殊字符
+            raise KeyError(f"字段 '{col}' 未在 DATA_SCHEMA 中注册。")
         sql_type = DATA_SCHEMA[col]
         cast_exprs.append(f'CAST("{col}" AS {sql_type}) AS "{col}"')
 
-    # 路径处理：将 Windows 的 \ 替换为 / 以防 DuckDB 报错
     safe_path = file_path.replace("\\", "/")
-    
     return f"""
         COPY (
-            SELECT 
-                {', '.join(cast_exprs)}
+            SELECT {', '.join(cast_exprs)}
             FROM {source_df_name}
             ORDER BY {order_by}
-        ) TO '{safe_path}' 
-        (FORMAT 'parquet', COMPRESSION 'ZSTD');
+        ) TO '{safe_path}' (FORMAT 'parquet', COMPRESSION 'ZSTD');
+    """
+
+def build_save_table_sql(source_df_name: str, actual_columns: list, order_by: str, file_path: str) -> str:
+    """
+    专门拼装单表快照(save_snapshot)存储 SQL。
+    """
+    cast_exprs = []
+    for col in actual_columns:
+        if col not in DATA_SCHEMA:
+            raise KeyError(f"字段 '{col}' 未在 DATA_SCHEMA 中注册。")
+        sql_type = DATA_SCHEMA[col]
+        cast_exprs.append(f'CAST("{col}" AS {sql_type}) AS "{col}"')
+
+    safe_path = file_path.replace("\\", "/")
+    return f"""
+        COPY (
+            SELECT {', '.join(cast_exprs)}
+            FROM {source_df_name}
+            ORDER BY {order_by}
+        ) TO '{safe_path}' (FORMAT 'parquet', COMPRESSION 'ZSTD');
     """
