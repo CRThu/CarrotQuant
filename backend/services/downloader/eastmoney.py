@@ -122,8 +122,6 @@ class EastMoneyDownloader(BaseDownloader):
             logger.error(f"Error fetching EastMoney all symbols: {e}")
             return []
 
-<<<<<<< Updated upstream
-=======
     def _filter_schema(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         [防火墙] 根据 DATA_SCHEMA 严格过滤列
@@ -143,7 +141,6 @@ class EastMoneyDownloader(BaseDownloader):
             
         return df[valid_cols]
 
->>>>>>> Stashed changes
     def fetch_stock_info(self) -> pd.DataFrame:
         """
         获取 A 股基础信息快照 (代码、名称)
@@ -154,11 +151,7 @@ class EastMoneyDownloader(BaseDownloader):
             # 仅保留基础字段
             df = df[['代码', '名称']]
             df.columns = ['stock_code', 'stock_name']
-<<<<<<< Updated upstream
-            return df
-=======
             return self._filter_schema(df)
->>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error fetching stock info: {e}")
             return pd.DataFrame()
@@ -171,11 +164,7 @@ class EastMoneyDownloader(BaseDownloader):
             df = ak.stock_board_industry_name_em()
             df = df[['板块名称']]
             df.columns = ['sector_name']
-<<<<<<< Updated upstream
-            return df
-=======
             return self._filter_schema(df)
->>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error fetching sector info: {e}")
             return pd.DataFrame()
@@ -188,45 +177,11 @@ class EastMoneyDownloader(BaseDownloader):
             df = ak.stock_board_concept_name_em()
             df = df[['板块名称']]
             df.columns = ['concept_name']
-<<<<<<< Updated upstream
-            return df
-=======
             return self._filter_schema(df)
->>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error fetching concept info: {e}")
             return pd.DataFrame()
 
-<<<<<<< Updated upstream
-    async def fetch_stock_sector_map(self) -> pd.DataFrame:
-        """
-        获取股票与行业的映射关系 (一对一)
-        """
-        try:
-            sectors = self.get_all_sectors()
-            results = []
-            for i, s in enumerate(sectors):
-                 logger.debug(f"[EastMoney] 正在抓取行业成员 ({i+1}/{len(sectors)}): {s}")
-                 cons = ak.stock_board_industry_cons_em(symbol=s)
-                 if cons.empty:
-                     continue
-                 cons = cons[['代码', '名称']].copy()
-                 cons['sector_name'] = s
-                 results.append(cons)
-                 # 流控避让
-                 await asyncio.sleep(0.1)
-            
-            if not results:
-                return pd.DataFrame()
-                
-            full_df = pd.concat(results)
-            full_df = full_df.rename(columns={'代码': 'stock_code'})
-            # 严肃过滤：仅保留代码和行业名称，剔除任何行情字段
-            return full_df[['stock_code', 'sector_name']].drop_duplicates()
-        except Exception as e:
-            logger.error(f"Error fetching stock-sector map: {e}")
-            return pd.DataFrame()
-=======
     async def fetch_stock_sector_map(self, progress_callback=None) -> pd.DataFrame:
         """
         获取股票与行业的映射关系 (一对多)
@@ -321,4 +276,3 @@ class EastMoneyDownloader(BaseDownloader):
         # 去重并清洗
         full_df = full_df.drop_duplicates()
         return self._filter_schema(full_df)
->>>>>>> Stashed changes

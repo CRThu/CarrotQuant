@@ -68,12 +68,8 @@ class SinaDownloader(BaseDownloader):
     def fetch_concept_info(self) -> pd.DataFrame:
         return pd.DataFrame()
 
-<<<<<<< Updated upstream
-    async def fetch_stock_sector_map(self) -> pd.DataFrame:
-=======
     async def fetch_stock_sector_map(self, progress_callback=None) -> pd.DataFrame:
         return pd.DataFrame()
 
     async def fetch_stock_concept_map(self, progress_callback=None) -> pd.DataFrame:
->>>>>>> Stashed changes
         return pd.DataFrame()

@@ -88,16 +88,6 @@ class MarketDataManager:
             handler = getattr(downloader, handler_name)
             
             task.message = f"正在拉取 {table_name} 全量快照..."
-<<<<<<< Updated upstream
-            # 兼容异步/同步方法 (如 fetch_stock_sector_map 是 async)
-            if asyncio.iscoroutinefunction(handler):
-                df = await handler()
-            else:
-                df = await asyncio.to_thread(handler)
-            
-            if df.empty:
-                raise ValueError(f"下载器返回数据为空")
-=======
             # 闭包用于实时回传进度
             def progress_updater(p, msg):
                 task.progress = p
@@ -118,7 +108,6 @@ class MarketDataManager:
             
             if df.empty:
                 raise ValueError(f"[{table_name}] 下载器返回数据为空")
->>>>>>> Stashed changes
 
             await asyncio.to_thread(self.storage.save_snapshot, df=df, table_name=table_name)
             

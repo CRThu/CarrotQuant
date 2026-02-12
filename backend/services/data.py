@@ -48,16 +48,10 @@ class DataManager:
                 continue
 
             try:
-<<<<<<< Updated upstream
-                # 使用中心化 SQL 构建器进行审计统计
-                from core.sql_builder import build_metadata_sql
-                sql = build_metadata_sql(t_path)
-=======
                 # 配置驱动：根据 TABLE_REGISTRY 判定是否为时序表
                 is_timeseries = (config.get("load_mode") == "matrix") or (config.get("storage_type") == "partition")
                 from core.sql_builder import build_metadata_sql
                 sql = build_metadata_sql(t_path, is_timeseries=is_timeseries)
->>>>>>> Stashed changes
                 res = self.conn.execute(sql).fetchone()
                 
                 if res and res[2] > 0: # row_count > 0
@@ -182,33 +176,6 @@ class DataManager:
     def _load_mapping_track(self, t_name, config, paths, start_date, end_date, symbols) -> TableData:
         """
         映射轨：获取标签映射 (如 股票->板块)
-<<<<<<< Updated upstream
-        支持 1-to-1 与 1-to-many 自动切换
-        """
-        id_col, val_col = config["id_col"], config["val_col"]
-        # 注意：此处 filters 暂时硬编码为 stock_code，未来可根据 config 扩展
-        sql = build_select_sql(t_name, paths, [id_col, val_col], str(start_date), str(end_date), {id_col: symbols} if symbols else None)
-        
-        res = self.conn.execute(sql).fetchnumpy()
-        id_arr, val_arr = res[id_col], res[val_col]
-
-        if len(id_arr) == 0:
-            return TableData(name=t_name, data={})
-
-        # 自动探测是否为一对多映射
-        # 如果 ID 数量多于唯一 ID 数量，则进入一对多逻辑
-        mapping = {}
-        unique_ids = set(id_arr)
-        if len(unique_ids) < len(id_arr):
-            # 一对多：Dict[ID, List[Value]]
-            for k, v in zip(id_arr, val_arr):
-                if k not in mapping:
-                    mapping[k] = []
-                mapping[k].append(v)
-        else:
-            # 一对一：Dict[ID, Value]
-            mapping = {k: v for k, v in zip(id_arr, val_arr)}
-=======
         支持“智能查询”：载入所有 fields 并存储为 List[Dict]
         """
         # 1. 字段获取 (Strict Mode: 必须配置 fields)
@@ -225,7 +192,6 @@ class DataManager:
             filters = {id_col: symbols}
 
         sql = build_snapshot_query_sql(parquet_path, fields, filters)
->>>>>>> Stashed changes
         
         # 3. 执行查询并转换为 List[Dict]
         # fetch_arrow_table().to_pylist() 是最高效的转换方式之一

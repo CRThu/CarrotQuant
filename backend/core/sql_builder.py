@@ -62,13 +62,6 @@ def build_metadata_sql(table_path: str, is_timeseries: bool = True) -> str:
     else:
         from_clause = f"read_parquet('{safe_path}/**/*.parquet', hive_partitioning=true)"
     
-<<<<<<< Updated upstream
-    return f"""
-        SELECT 
-            -- 兼容无 trade_date 的表 (快照表可能只有元数据)
-            CASE WHEN COUNT(*) > 0 THEN MIN(trade_date)::VARCHAR ELSE NULL END as start_date, 
-            CASE WHEN COUNT(*) > 0 THEN MAX(trade_date)::VARCHAR ELSE NULL END as end_date, 
-=======
     if is_timeseries:
         date_cols = "MIN(trade_date)::VARCHAR AS start_date, MAX(trade_date)::VARCHAR AS end_date"
     else:
@@ -77,7 +70,6 @@ def build_metadata_sql(table_path: str, is_timeseries: bool = True) -> str:
     return f"""
         SELECT 
             {date_cols}, 
->>>>>>> Stashed changes
             COUNT(*)::INTEGER as row_count 
         FROM {from_clause}
     """

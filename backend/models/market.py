@@ -64,49 +64,6 @@ TABLE_REGISTRY = {
         "ffill_cols": ["open", "close", "high", "low"],
         "zerofill_cols": ["volume", "amount", "turnover"],
         "download_config": {"source": "sina", "handler": "fetch_stock_daily", "adjust": "adj"}
-<<<<<<< Updated upstream
-    },
-    "cn_stock_sina_daily_raw": {
-        "load_mode": "matrix",
-        "storage_type": "partition",
-        "id_col": "stock_code",
-        "fields": ["open", "close", "high", "low", "volume", "amount", "outstanding_share", "turnover"],
-        "ffill_cols": ["open", "close", "high", "low"],
-        "zerofill_cols": ["volume", "amount", "turnover"],
-        "download_config": {"source": "sina", "handler": "fetch_stock_daily", "adjust": "raw"}
-    },
-    "cn_sector_em_daily_raw": {
-        "load_mode": "matrix",
-        "storage_type": "partition",
-        "id_col": "sector_name",
-        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
-        "ffill_cols": ["open", "close", "high", "low"],
-        "zerofill_cols": ["volume", "amount", "turnover"],
-        "download_config": {"source": "em", "handler": "fetch_sector_daily", "adjust": "raw"}
-    },
-    "cn_sector_em_daily_adj": {
-        "load_mode": "matrix",
-        "storage_type": "partition",
-        "id_col": "sector_name",
-        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
-        "ffill_cols": ["open", "close", "high", "low"],
-        "zerofill_cols": ["volume", "amount", "turnover"],
-        "download_config": {"source": "em", "handler": "fetch_sector_daily", "adjust": "adj"}
-    },
-    "stock_sector_map": {
-        "load_mode": "mapping",
-        "storage_type": "partition",
-        "id_col": "stock_code",
-        "val_col": "sector_name",
-        "download_config": {"source": "em", "handler": "fetch_stock_sector_map"}
-    },
-    # --- 快照表 (Snapshot Tables) ---
-    "cn_stock_em": {
-        "load_mode": "mapping",
-        "storage_type": "snapshot",
-        "id_col": "stock_code",
-        "val_col": "stock_name",
-=======
     },
     "cn_stock_sina_daily_raw": {
         "load_mode": "matrix",
@@ -141,32 +98,19 @@ TABLE_REGISTRY = {
         "load_mode": "mapping",
         "storage_type": "snapshot",
         "fields": ["stock_code", "stock_name"],
->>>>>>> Stashed changes
         "download_config": {"source": "em", "handler": "fetch_stock_info"}
     },
     "cn_sector_em": {
         "load_mode": "mapping",
         "storage_type": "snapshot",
-<<<<<<< Updated upstream
-        "id_col": "sector_name",
-        "val_col": "sector_name",
-        "download_config": {"source": "em", "handler": "fetch_sector_info"}
-=======
         "fields": ["stock_code", "stock_name", "sector_name"],
         "download_config": {"source": "em", "handler": "fetch_stock_sector_map"}
->>>>>>> Stashed changes
     },
     "cn_concept_em": {
         "load_mode": "mapping",
         "storage_type": "snapshot",
-<<<<<<< Updated upstream
-        "id_col": "concept_name",
-        "val_col": "concept_name",
-        "download_config": {"source": "em", "handler": "fetch_concept_info"}
-=======
         "fields": ["stock_code", "stock_name", "concept_name"],
         "download_config": {"source": "em", "handler": "fetch_stock_concept_map"}
->>>>>>> Stashed changes
     }
 }
 
@@ -226,25 +170,6 @@ class TableData:
             
         raise IndexError(f"TableData '{self.name}' 访问方式错误 (Key: {key})")
 
-<<<<<<< Updated upstream
-    def get_value(self, key, default=None):
-        """
-        获取单值 (用于 1-to-1 映射)
-        """
-        if not isinstance(self.data, dict):
-            return default
-        return self.data.get(key, default)
-
-    def get_list(self, key) -> list:
-        """
-        获取列表 (用于 1-to-many 映射)
-        确保永不返回 None，方便直接 for 循环
-        """
-        if not isinstance(self.data, dict):
-            return []
-        res = self.data.get(key, [])
-        return res if isinstance(res, list) else [res]
-=======
     def get_value(self, val, by="stock_code", target="stock_name", default=None):
         """
         获取单值 (智能查询)
@@ -274,7 +199,6 @@ class TableData:
                 if t_val is not None:
                     results.append(t_val)
         return results
->>>>>>> Stashed changes
 
     def to_dict(self) -> dict:
         return {
