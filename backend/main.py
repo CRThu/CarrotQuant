@@ -1,3 +1,6 @@
+import os
+os.environ["TQDM_DISABLE"] = "1"
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
@@ -32,6 +35,10 @@ app = FastAPI(
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Mount static files
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="www", html=True), name="www")
 
 if __name__ == "__main__":
     import uvicorn

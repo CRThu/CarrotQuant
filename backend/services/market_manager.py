@@ -88,6 +88,7 @@ class MarketDataManager:
             handler = getattr(downloader, handler_name)
             
             task.message = f"正在拉取 {table_name} 全量快照..."
+<<<<<<< Updated upstream
             # 兼容异步/同步方法 (如 fetch_stock_sector_map 是 async)
             if asyncio.iscoroutinefunction(handler):
                 df = await handler()
@@ -96,6 +97,28 @@ class MarketDataManager:
             
             if df.empty:
                 raise ValueError(f"下载器返回数据为空")
+=======
+            # 闭包用于实时回传进度
+            def progress_updater(p, msg):
+                task.progress = p
+                task.message = msg
+
+            # 兼容异步/同步方法 (如 fetch_stock_sector_map 是 async)
+            if asyncio.iscoroutinefunction(handler):
+                df = await handler(progress_callback=progress_updater)
+            else:
+                # 同步方法若支持 progress_callback 则传递，否则维持原状
+                # 目前主要针对 mapping 类任务
+                import inspect
+                sig = inspect.signature(handler)
+                if "progress_callback" in sig.parameters:
+                    df = await asyncio.to_thread(handler, progress_callback=progress_updater)
+                else:
+                    df = await asyncio.to_thread(handler)
+            
+            if df.empty:
+                raise ValueError(f"[{table_name}] 下载器返回数据为空")
+>>>>>>> Stashed changes
 
             await asyncio.to_thread(self.storage.save_snapshot, df=df, table_name=table_name)
             
@@ -187,5 +210,9 @@ class MarketDataManager:
             self.stop_events[task_id].set()
             return True
         return False
+
+    def get_all_tasks(self) -> List[DownloadTask]:
+        """返回所有任务列表"""
+        return list(self.tasks.values())
 
 market_manager = MarketDataManager()

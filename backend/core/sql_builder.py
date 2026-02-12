@@ -27,37 +27,33 @@ def build_pivot_sql(table_name: str,
     """
     return pivot_sql
 
-def build_select_sql(table_name: str, 
-                     parquet_paths: list, 
-                     columns: list, 
-                     start_date: str, 
-                     end_date: str, 
-                     filters: dict = None) -> str:
+def build_snapshot_query_sql(parquet_path: str, columns: list, filters: dict = None) -> str:
     """
-    专门拼装普通 SELECT 语句，用于简单映射加载
+    专门拼装快照查询 SQL (无 trade_date 约束)
     """
-    path_sql = ", ".join([f"'{p}'" for p in parquet_paths])
     col_sql = ", ".join(columns)
+    safe_path = parquet_path.replace("\\", "/")
     
-    where_clause = f"trade_date >= '{start_date}' AND trade_date <= '{end_date}'"
+    where_clause = "1=1"
     if filters:
         for k, v in filters.items():
+            if v is None: continue
             if isinstance(v, list):
                 val_list = ", ".join([f"'{i}'" for i in v])
                 where_clause += f" AND {k} IN ({val_list})"
             else:
                 where_clause += f" AND {k} = '{v}'"
-                
-    select_sql = f"""
+
+    return f"""
         SELECT {col_sql}
-        FROM read_parquet([{path_sql}], hive_partitioning=true)
+        FROM read_parquet('{safe_path}')
         WHERE {where_clause}
     """
-    return select_sql
 
-def build_metadata_sql(table_path: str) -> str:
+def build_metadata_sql(table_path: str, is_timeseries: bool = True) -> str:
     """
-    拼装元数据审计 SQL：提取精确的时间范围和行数统计
+    拼装元数据审计 SQL：提取时间范围和行数统计
+    is_timeseries=False 时不查询 trade_date（快照表无此列）
     """
     # 路径处理：兼容 Windows 路径并支持单文件
     safe_path = table_path.replace("\\", "/")
@@ -66,11 +62,22 @@ def build_metadata_sql(table_path: str) -> str:
     else:
         from_clause = f"read_parquet('{safe_path}/**/*.parquet', hive_partitioning=true)"
     
+<<<<<<< Updated upstream
     return f"""
         SELECT 
             -- 兼容无 trade_date 的表 (快照表可能只有元数据)
             CASE WHEN COUNT(*) > 0 THEN MIN(trade_date)::VARCHAR ELSE NULL END as start_date, 
             CASE WHEN COUNT(*) > 0 THEN MAX(trade_date)::VARCHAR ELSE NULL END as end_date, 
+=======
+    if is_timeseries:
+        date_cols = "MIN(trade_date)::VARCHAR AS start_date, MAX(trade_date)::VARCHAR AS end_date"
+    else:
+        date_cols = "NULL AS start_date, NULL AS end_date"
+
+    return f"""
+        SELECT 
+            {date_cols}, 
+>>>>>>> Stashed changes
             COUNT(*)::INTEGER as row_count 
         FROM {from_clause}
     """

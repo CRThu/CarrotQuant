@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CarrotQuant Dashboard</title>
+    <link rel="stylesheet" href="vendor/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f4f7f6;
+        }
+
+        .nav-tabs {
+            cursor: pointer;
+        }
+
+        .status-missing {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .status-ok {
+            color: #198754;
+        }
+
+        .card {
+            border: none;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">🥕 CarrotQuant 控制台</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="audit-tab" data-bs-toggle="tab" href="#audit" role="tab">数据资产审计</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="task-monitor-tab" data-bs-toggle="tab" href="#task-monitor" role="tab">任务监控</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="task-tab" data-bs-toggle="tab" href="#task" role="tab">高级任务创建</a>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="dashboardTabContent">
+            <!-- Audit Tab -->
+            <div class="tab-pane fade show active" id="audit" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h5 class="card-title">全量资产同步状态</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="initDashboard()">刷新数据</button>
+                        </div>
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>表名 (ID)</th>
+                                    <th>存储类型</th>
+                                    <th>行数</th>
+                                    <th>时间范围</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-body">
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">正在审计系统配置...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Monitor Tab -->
+            <div class="tab-pane fade" id="task-monitor" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">实时任务列表</h5>
+                        <div id="task-list-container">
+                            <p class="text-center text-muted">目前没有正在运行的任务</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Task Tab -->
+            <div class="tab-pane fade" id="task" role="tabpanel">
+                <div class="card col-md-8 mx-auto">
+                    <div class="card-header bg-white">高级下载请求 (Raw API)</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">目标表名</label>
+                            <input type="text" id="raw_table_name" class="form-control"
+                                placeholder="cn_stock_em_daily_adj">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">标的代码 (逗号分隔)</label>
+                            <input type="text" id="raw_symbols" class="form-control" placeholder="为空则下载全市场">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">月份 (YYYYMM, 逗号分隔)</label>
+                            <input type="text" id="raw_months" class="form-control" placeholder="202401,202402">
+                        </div>
+                        <button class="btn btn-primary w-100" onclick="submitAdvancedTask()">启动任务</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Download Modal -->
+    <div class="modal fade" id="downloadModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">快捷下载</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalTableName">
+                    <div class="mb-3">
+                        <label class="form-label">选择下载月份 (YYYYMM, 逗号分隔)</label>
+                        <input type="text" id="modalMonths" class="form-control" placeholder="如: 202401, 202402">
+                        <div id="modalHelp" class="form-text">如果是快照表 (Snapshot)，可以留空。</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmQuickDownload()">启动任务</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="vendor/js/bootstrap.bundle.min.js"></script>
+    <script src="static/js/dashboard.js"></script>
+</body>
+
+</html>

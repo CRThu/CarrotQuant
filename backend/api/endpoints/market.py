@@ -48,7 +48,22 @@ async def stop_task(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found or already stopped")
     return {"message": "Task stop signal sent"}
 
+@router.get("/tasks", response_model=List[DownloadTask])
+async def get_all_tasks():
+    """
+    获取所有活跃和历史任务列表。
+    """
+    return market_manager.get_all_tasks()
+
 # -- Data Access Endpoints --
+
+@router.get("/registry")
+async def get_market_registry():
+    """
+    获取系统中所有已注册的数据表配置。
+    """
+    from models.market import TABLE_REGISTRY
+    return TABLE_REGISTRY
 
 @router.get("/tables")
 async def get_market_tables():

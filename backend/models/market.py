@@ -64,6 +64,7 @@ TABLE_REGISTRY = {
         "ffill_cols": ["open", "close", "high", "low"],
         "zerofill_cols": ["volume", "amount", "turnover"],
         "download_config": {"source": "sina", "handler": "fetch_stock_daily", "adjust": "adj"}
+<<<<<<< Updated upstream
     },
     "cn_stock_sina_daily_raw": {
         "load_mode": "matrix",
@@ -105,21 +106,67 @@ TABLE_REGISTRY = {
         "storage_type": "snapshot",
         "id_col": "stock_code",
         "val_col": "stock_name",
+=======
+    },
+    "cn_stock_sina_daily_raw": {
+        "load_mode": "matrix",
+        "storage_type": "partition",
+        "id_col": "stock_code",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "outstanding_share", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "sina", "handler": "fetch_stock_daily", "adjust": "raw"}
+    },
+    "cn_sector_em_daily_raw": {
+        "load_mode": "matrix",
+        "storage_type": "partition",
+        "id_col": "sector_name",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "em", "handler": "fetch_sector_daily", "adjust": "raw"}
+    },
+    "cn_sector_em_daily_adj": {
+        "load_mode": "matrix",
+        "storage_type": "partition",
+        "id_col": "sector_name",
+        "fields": ["open", "close", "high", "low", "volume", "amount", "amplitude", "pct_change", "change_amount", "turnover"],
+        "ffill_cols": ["open", "close", "high", "low"],
+        "zerofill_cols": ["volume", "amount", "turnover"],
+        "download_config": {"source": "em", "handler": "fetch_sector_daily", "adjust": "adj"}
+    },
+    # --- 快照表 (Snapshot Tables): cn_{种类}_{源} ---
+    # --- 快照表 (Snapshot Tables): cn_{种类}_{源} ---
+    "cn_stock_em": {
+        "load_mode": "mapping",
+        "storage_type": "snapshot",
+        "fields": ["stock_code", "stock_name"],
+>>>>>>> Stashed changes
         "download_config": {"source": "em", "handler": "fetch_stock_info"}
     },
     "cn_sector_em": {
         "load_mode": "mapping",
         "storage_type": "snapshot",
+<<<<<<< Updated upstream
         "id_col": "sector_name",
         "val_col": "sector_name",
         "download_config": {"source": "em", "handler": "fetch_sector_info"}
+=======
+        "fields": ["stock_code", "stock_name", "sector_name"],
+        "download_config": {"source": "em", "handler": "fetch_stock_sector_map"}
+>>>>>>> Stashed changes
     },
     "cn_concept_em": {
         "load_mode": "mapping",
         "storage_type": "snapshot",
+<<<<<<< Updated upstream
         "id_col": "concept_name",
         "val_col": "concept_name",
         "download_config": {"source": "em", "handler": "fetch_concept_info"}
+=======
+        "fields": ["stock_code", "stock_name", "concept_name"],
+        "download_config": {"source": "em", "handler": "fetch_stock_concept_map"}
+>>>>>>> Stashed changes
     }
 }
 
@@ -153,7 +200,7 @@ class TableData:
         self.name = name
         self.timeline = timeline  # x-axis (dates)
         self.symbols = symbols    # y-axis (assets)
-        self.data = data          # np.ndarray (2D Matrix) or dict (Mapping)
+        self.data = data          # np.ndarray (2D Matrix) or List[Dict] (Snapshot Records)
         
         # 索引计算缓存
         self.date_to_idx = {d: i for i, d in enumerate(timeline)} if timeline else {}
@@ -163,11 +210,11 @@ class TableData:
         """
         三元/二元索引支持:
         矩阵轨：data["2024-01-01", "000001"] -> 返回数值
-        映射轨：data["000001"] -> 返回板块名
+        映射轨：不再支持直接通过 [] 访问，请改用 get_value/get_list
         """
-        if isinstance(self.data, dict):
+        if isinstance(self.data, list):
             # 映射轨道访问
-            return self.data.get(key)
+            raise NotImplementedError(f"映射表不再支持 [] 访问，请使用 get_value(val, by=..., target=...)")
         
         if isinstance(key, tuple) and len(key) == 2:
             t_label, s_label = key
@@ -179,6 +226,7 @@ class TableData:
             
         raise IndexError(f"TableData '{self.name}' 访问方式错误 (Key: {key})")
 
+<<<<<<< Updated upstream
     def get_value(self, key, default=None):
         """
         获取单值 (用于 1-to-1 映射)
@@ -196,6 +244,37 @@ class TableData:
             return []
         res = self.data.get(key, [])
         return res if isinstance(res, list) else [res]
+=======
+    def get_value(self, val, by="stock_code", target="stock_name", default=None):
+        """
+        获取单值 (智能查询)
+        示例: get_value("000001", by="stock_code", target="stock_name")
+        """
+        if not isinstance(self.data, list):
+            return default
+            
+        for record in self.data:
+            if record.get(by) == val:
+                return record.get(target, default)
+        return default
+
+    def get_list(self, val, by="sector_name", target="stock_code") -> list:
+        """
+        获取列表 (智能查询 - 一对多)
+        示例: get_list("半导体", by="sector_name", target="stock_code")
+        确保永不返回 None，方便直接 for 循环
+        """
+        if not isinstance(self.data, list):
+            return []
+            
+        results = []
+        for record in self.data:
+            if record.get(by) == val:
+                t_val = record.get(target)
+                if t_val is not None:
+                    results.append(t_val)
+        return results
+>>>>>>> Stashed changes
 
     def to_dict(self) -> dict:
         return {

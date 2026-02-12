@@ -39,13 +39,20 @@ def test_registry_config():
 
 def test_metadata_audit_o1():
     print("Testing O(1) metadata audit...")
+<<<<<<< Updated upstream
     # 模拟环境：创建一个虚拟的 Parquet 文件
+=======
+    # 模拟环境：创建一个虚拟的快照 Parquet 文件（无 trade_date 列）
+>>>>>>> Stashed changes
     data_dir = "backend/tests/mock_data"
     os.makedirs(os.path.join(data_dir, "cn_stock_em"), exist_ok=True)
     parquet_path = os.path.join(data_dir, "cn_stock_em", "cn_stock_em.parquet")
     
     df = pd.DataFrame({
+<<<<<<< Updated upstream
         "trade_date": [date(2025, 1, 1), date(2025, 1, 1)],
+=======
+>>>>>>> Stashed changes
         "stock_code": ["000001", "000002"],
         "stock_name": ["平安银行", "万科A"]
     })
@@ -63,6 +70,11 @@ def test_metadata_audit_o1():
         assert "cn_stock_em" in meta
         assert meta["cn_stock_em"]["storage_type"] == "snapshot"
         assert meta["cn_stock_em"]["row_count"] == 2
+<<<<<<< Updated upstream
+=======
+        assert meta["cn_stock_em"]["start_date"] is None
+        assert meta["cn_stock_em"]["end_date"] is None
+>>>>>>> Stashed changes
         assert "cn_stock_em.parquet" in meta["cn_stock_em"]["path"]
         print("Metadata audit test passed!")
     finally:

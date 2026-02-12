@@ -9,7 +9,7 @@ from core.exceptions import DataNotFoundError
 from core.config import settings
 from models.market import TableData, MarketDataContainer
 
-from core.sql_builder import build_pivot_sql, build_select_sql
+from core.sql_builder import build_pivot_sql, build_snapshot_query_sql
 from services.utils.processor import ffill_2d, zero_fill
 
 class DataManager:
@@ -48,9 +48,16 @@ class DataManager:
                 continue
 
             try:
+<<<<<<< Updated upstream
                 # 使用中心化 SQL 构建器进行审计统计
                 from core.sql_builder import build_metadata_sql
                 sql = build_metadata_sql(t_path)
+=======
+                # 配置驱动：根据 TABLE_REGISTRY 判定是否为时序表
+                is_timeseries = (config.get("load_mode") == "matrix") or (config.get("storage_type") == "partition")
+                from core.sql_builder import build_metadata_sql
+                sql = build_metadata_sql(t_path, is_timeseries=is_timeseries)
+>>>>>>> Stashed changes
                 res = self.conn.execute(sql).fetchone()
                 
                 if res and res[2] > 0: # row_count > 0
@@ -175,6 +182,7 @@ class DataManager:
     def _load_mapping_track(self, t_name, config, paths, start_date, end_date, symbols) -> TableData:
         """
         映射轨：获取标签映射 (如 股票->板块)
+<<<<<<< Updated upstream
         支持 1-to-1 与 1-to-many 自动切换
         """
         id_col, val_col = config["id_col"], config["val_col"]
@@ -200,7 +208,33 @@ class DataManager:
         else:
             # 一对一：Dict[ID, Value]
             mapping = {k: v for k, v in zip(id_arr, val_arr)}
+=======
+        支持“智能查询”：载入所有 fields 并存储为 List[Dict]
+        """
+        # 1. 字段获取 (Strict Mode: 必须配置 fields)
+        fields = config["fields"]
+            
+        # 2. 构建查询
+        # 注意：快照表仅有一个路径
+        parquet_path = paths[0]
         
-        return TableData(name=t_name, data=mapping)
+        # 如果指定了 symbols，假设是指 id_col (仅作简单过滤，完全过滤由 TableData 接手)
+        filters = None
+        id_col = config.get("id_col") 
+        if symbols and id_col:
+            filters = {id_col: symbols}
+
+        sql = build_snapshot_query_sql(parquet_path, fields, filters)
+>>>>>>> Stashed changes
+        
+        # 3. 执行查询并转换为 List[Dict]
+        # fetch_arrow_table().to_pylist() 是最高效的转换方式之一
+        records = self.conn.execute(sql).fetch_arrow_table().to_pylist()
+
+        # 4. 封装
+        # 映射表中 timeline 通常为空，symbols 可以是所有记录的 id_col 集合
+        all_symbols = [r.get(id_col) for r in records] if id_col else []
+        
+        return TableData(name=t_name, symbols=all_symbols, data=records)
 
 data_manager = DataManager()

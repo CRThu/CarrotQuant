@@ -39,6 +39,7 @@ class BaseDownloader(ABC):
     @abstractmethod
     def fetch_stock_info(self) -> pd.DataFrame:
         """获取 A 股基础信息快照"""
+<<<<<<< Updated upstream
         pass
 
     @abstractmethod
@@ -54,4 +55,34 @@ class BaseDownloader(ABC):
     @abstractmethod
     async def fetch_stock_sector_map(self) -> pd.DataFrame:
         """获取股票与行业的映射关系"""
+=======
+        pass
+
+    @abstractmethod
+    def fetch_sector_info(self) -> pd.DataFrame:
+        """获取行业板块基础信息"""
+        pass
+
+    @abstractmethod
+    def fetch_concept_info(self) -> pd.DataFrame:
+        """获取概念板块基础信息"""
+        pass
+
+    @abstractmethod
+    async def fetch_stock_sector_map(self, progress_callback=None) -> pd.DataFrame:
+        """
+        获取股票与行业的映射关系
+        Args:
+            progress_callback: Optional[Callable[[float, str], None]]
+        """
+        pass
+
+    @abstractmethod
+    async def fetch_stock_concept_map(self, progress_callback=None) -> pd.DataFrame:
+        """
+        获取股票与概念的映射关系
+        Args:
+            progress_callback: Optional[Callable[[float, str], None]]
+        """
+>>>>>>> Stashed changes
         pass

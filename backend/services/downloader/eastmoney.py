@@ -122,6 +122,28 @@ class EastMoneyDownloader(BaseDownloader):
             logger.error(f"Error fetching EastMoney all symbols: {e}")
             return []
 
+<<<<<<< Updated upstream
+=======
+    def _filter_schema(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        [防火墙] 根据 DATA_SCHEMA 严格过滤列
+        剔除所有未注册的 rec, 序号, index 等冗余列
+        """
+        if df.empty:
+            return df
+            
+        from models.market import DATA_SCHEMA
+        # 1. 仅保留在 Schema 中定义的列
+        valid_cols = [c for c in df.columns if c in DATA_SCHEMA]
+        
+        # 2. 如果没有任何有效列，返回空 DF (防止写入全空表)
+        if not valid_cols:
+            logger.warning(f"数据清洗后无有效列 (原列: {df.columns.tolist()})")
+            return pd.DataFrame()
+            
+        return df[valid_cols]
+
+>>>>>>> Stashed changes
     def fetch_stock_info(self) -> pd.DataFrame:
         """
         获取 A 股基础信息快照 (代码、名称)
@@ -132,7 +154,11 @@ class EastMoneyDownloader(BaseDownloader):
             # 仅保留基础字段
             df = df[['代码', '名称']]
             df.columns = ['stock_code', 'stock_name']
+<<<<<<< Updated upstream
             return df
+=======
+            return self._filter_schema(df)
+>>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error fetching stock info: {e}")
             return pd.DataFrame()
@@ -145,7 +171,11 @@ class EastMoneyDownloader(BaseDownloader):
             df = ak.stock_board_industry_name_em()
             df = df[['板块名称']]
             df.columns = ['sector_name']
+<<<<<<< Updated upstream
             return df
+=======
+            return self._filter_schema(df)
+>>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error fetching sector info: {e}")
             return pd.DataFrame()
@@ -158,11 +188,16 @@ class EastMoneyDownloader(BaseDownloader):
             df = ak.stock_board_concept_name_em()
             df = df[['板块名称']]
             df.columns = ['concept_name']
+<<<<<<< Updated upstream
             return df
+=======
+            return self._filter_schema(df)
+>>>>>>> Stashed changes
         except Exception as e:
             logger.error(f"Error fetching concept info: {e}")
             return pd.DataFrame()
 
+<<<<<<< Updated upstream
     async def fetch_stock_sector_map(self) -> pd.DataFrame:
         """
         获取股票与行业的映射关系 (一对一)
@@ -191,3 +226,99 @@ class EastMoneyDownloader(BaseDownloader):
         except Exception as e:
             logger.error(f"Error fetching stock-sector map: {e}")
             return pd.DataFrame()
+=======
+    async def fetch_stock_sector_map(self, progress_callback=None) -> pd.DataFrame:
+        """
+        获取股票与行业的映射关系 (一对多)
+        鲁棒循环：前置审计 + 异常隔离 + info 级进度日志
+        """
+        import asyncio
+        sectors = self.get_all_sectors()
+        if len(sectors) == 0:
+            raise RuntimeError("行业板块列表为空，无法抓取映射关系")
+
+        results = []
+        failed = []
+        total = len(sectors)
+        
+        for i, s in enumerate(sectors):
+            msg = f"正在抓取行业成员 ({i+1}/{total}): {s}"
+            logger.info(msg)
+            if progress_callback:
+                progress_callback(round((i + 1) / total * 100, 2), msg)
+                
+            try:
+                cons = ak.stock_board_industry_cons_em(symbol=s)
+                if cons.empty:
+                    continue
+                # 保留代码和名称
+                cons = cons[['代码', '名称']].copy()
+                cons.columns = ['stock_code', 'stock_name']
+                cons['sector_name'] = s
+                results.append(cons)
+            except Exception as e:
+                logger.warning(f"抓取行业 '{s}' 成员失败: {e}")
+                failed.append(s)
+                continue
+            await asyncio.sleep(0.1)
+
+        if failed:
+            logger.warning(f"共 {len(failed)} 个行业抓取失败: {failed[:10]}")
+        if not results:
+            return pd.DataFrame()
+
+        full_df = pd.concat(results)
+        # 去重并清洗
+        full_df = full_df.drop_duplicates()
+        return self._filter_schema(full_df)
+
+    async def fetch_stock_concept_map(self, progress_callback=None) -> pd.DataFrame:
+        """
+        获取股票与概念的映射关系 (一对多)
+        鲁棒循环：前置审计 + 异常隔离 + info 级进度日志
+        """
+        import asyncio
+        try:
+            concept_df = ak.stock_board_concept_name_em()
+            concepts = concept_df['板块名称'].tolist()
+        except Exception as e:
+            raise RuntimeError(f"获取概念列表失败: {e}")
+
+        if len(concepts) == 0:
+            raise RuntimeError("概念板块列表为空，无法抓取映射关系")
+
+        results = []
+        failed = []
+        total = len(concepts)
+        
+        for i, c in enumerate(concepts):
+            msg = f"正在抓取概念成员 ({i+1}/{total}): {c}"
+            logger.info(msg)
+            if progress_callback:
+                progress_callback(round((i + 1) / total * 100, 2), msg)
+                
+            try:
+                cons = ak.stock_board_concept_cons_em(symbol=c)
+                if cons.empty:
+                    continue
+                # 保留代码和名称
+                cons = cons[['代码', '名称']].copy()
+                cons.columns = ['stock_code', 'stock_name']
+                cons['concept_name'] = c
+                results.append(cons)
+            except Exception as e:
+                logger.warning(f"抓取概念 '{c}' 成员失败: {e}")
+                failed.append(c)
+                continue
+            await asyncio.sleep(0.1)
+
+        if failed:
+            logger.warning(f"共 {len(failed)} 个概念抓取失败: {failed[:10]}")
+        if not results:
+            return pd.DataFrame()
+
+        full_df = pd.concat(results)
+        # 去重并清洗
+        full_df = full_df.drop_duplicates()
+        return self._filter_schema(full_df)
+>>>>>>> Stashed changes
