@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     
     # Secrets / Tokens
     FRED_API_KEY: str | None = None
+    EM_COOKIE: str | None = None  # 东方财富 Cookie (用于反爬绕过)
 
     model_config = SettingsConfigDict(
         env_file=(
