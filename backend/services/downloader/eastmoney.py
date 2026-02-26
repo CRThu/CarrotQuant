@@ -1,10 +1,8 @@
 from typing import List
 import akshare as ak
 import pandas as pd
-import requests  # 用于 Monkey Patch
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-from curl_cffi.requests import Session as CurlSession
 
 from services.downloader.base import BaseDownloader
 from core.config import settings
@@ -14,39 +12,6 @@ class EastMoneyDownloader(BaseDownloader):
     """
     Implementation of BaseDownloader using AkShare (EastMoney).
     """
-    _patched = False  # 类变量，确保全局只执行一次 Patch
-
-    def __init__(self):
-        super().__init__()
-        # 检查是否需要执行反爬拦截
-        if settings.EM_COOKIE and not EastMoneyDownloader._patched:
-            self._apply_monkey_patch()
-
-    def _apply_monkey_patch(self):
-        """使用 curl-cffi 拦截 requests，绕过反爬"""
-        # 创建 curl-cffi Session
-        session = CurlSession(impersonate="chrome120")
-        
-        # 注入 Cookie
-        session.headers.update({"Cookie": settings.EM_COOKIE})
-        
-        # 全局替换 requests.get/post
-        original_get = requests.get
-        original_post = requests.post
-        
-        def patched_get(url, **kwargs):
-            return session.get(url, **kwargs)
-        
-        def patched_post(url, **kwargs):
-            return session.post(url, **kwargs)
-        
-        requests.get = patched_get
-        requests.post = patched_post
-        
-        # 标记已执行，避免重复 Patch
-        EastMoneyDownloader._patched = True
-        logger.info("已接管 requests 请求，使用 curl-cffi (chrome120) 绕过反爬")
-    
     @retry(
         stop=stop_after_attempt(3), 
         wait=wait_fixed(2), 
