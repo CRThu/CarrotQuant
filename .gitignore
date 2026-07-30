@@ -1,0 +1,35 @@
+# Data files
+data/
+*.log
+
+# Python Virtual Environments
+.venv/
+.venv*/
+venv/
+ENV/
+
+# Python Bytecode and Build Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.dll
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+benchmark_report.md
+
+# IDE & OS Garbage
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
