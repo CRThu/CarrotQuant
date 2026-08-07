@@ -79,12 +79,18 @@ def test_benchmark_5000_stocks_tps():
     amounts = np.zeros((n_steps, n_stocks), dtype=np.float64)
     signals[:, :100] = 1
     amounts[:, :100] = 100.0
-    engine.run_fast(signals=signals, amounts=amounts, data=data)  # 预热
 
-    tracemalloc.start()
+    # 预热 JIT 编译
+    engine.run_fast(signals=signals, amounts=amounts, data=data)
+
+    # 纯净性能测试 (无 tracemalloc 污染)
     start_fast = time.perf_counter()
     engine.run_fast(signals=signals, amounts=amounts, data=data)
     fast_elapsed = time.perf_counter() - start_fast
+
+    # 单独测量内存
+    tracemalloc.start()
+    engine.run_fast(signals=signals, amounts=amounts, data=data)
     _, peak_mem = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
