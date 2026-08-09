@@ -94,3 +94,61 @@ def pl_col_step_less_than_50(df):
     import polars as pl
     return pl.col("step_idx") < 50
 
+
+def test_anti_lookahead_custom_fields_chaos():
+    """验证自定义列在未来步 (t+1 ... T) 注入 Chaos 极值噪声时，t 步的历史切片不可见且完全不受污染"""
+    n_steps = 100
+    n_symbols = 2
+    timestamps = np.array([f"2024-01-{i+1:02d}" for i in range(n_steps)])
+    symbols = ["000001.SZ", "600000.SH"]
+
+    close_p = np.full((n_steps, n_symbols), 10.0)
+    open_p = np.full((n_steps, n_symbols), 10.0)
+
+    # 1. 干净的自定义因子 b
+    clean_factor_b = np.random.randn(n_steps, n_symbols)
+
+    clean_data = MarketData(
+        timestamps=timestamps,
+        symbols=symbols,
+        open_price=open_p,
+        high_price=close_p,
+        low_price=open_p,
+        close_price=close_p,
+        custom_fields={"factor_b": clean_factor_b},
+    )
+
+    # 2. 带有未来 Chaos 噪声的自定义因子 b (在 t >= 50 步注入 99999.0 极值)
+    noisy_factor_b = clean_factor_b.copy()
+    noisy_factor_b[50:, :] += 99999.0
+
+    noisy_data = MarketData(
+        timestamps=timestamps,
+        symbols=symbols,
+        open_price=open_p,
+        high_price=close_p,
+        low_price=open_p,
+        close_price=close_p,
+        custom_fields={"factor_b": noisy_factor_b},
+    )
+
+    @strategy
+    def custom_b_strategy(ctx: BarContext):
+        if ctx.step < 50:
+            # 读取历史切片并断言最大值不超过 100
+            b_hist = ctx.get_history("factor_b")
+            assert np.max(b_hist) < 100.0, "未来 Chaos 噪声泄漏进了当前步的历史切片中！"
+            if ctx.get("factor_b")[0] > 0.5:
+                ctx.buy(0, 100)
+
+    engine = Engine(initial_cash=100000.0)
+    # 分别跑干净和污染数据集，断言前半段正常断言均不触发且回测平稳
+    clean_res = engine.run(strategy=custom_b_strategy, data=clean_data)
+    noisy_res = engine.run(strategy=custom_b_strategy, data=noisy_data)
+
+    clean_logs_50 = clean_res.trade_logs.filter(pl_col_step_less_than_50(clean_res.trade_logs))
+    noisy_logs_50 = noisy_res.trade_logs.filter(pl_col_step_less_than_50(noisy_res.trade_logs))
+
+    assert len(clean_logs_50) == len(noisy_logs_50)
+
+

@@ -43,6 +43,35 @@ class MatchingMode(IntEnum):
 
 
 @njit(fastmath=True, nogil=True)
+def check_limit_order_triggered_jit(
+    side: int,
+    limit_price: float,
+    open_p: float,
+    high_p: float,
+    low_p: float,
+) -> tuple:
+    """
+    检查限价单在当前 Bar 是否触发成交。
+    
+    买入限价单 (side == 1): 当市场最低价 low_p <= limit_price 时触发，成交价格为 min(limit_price, open_p)
+    卖出限价单 (side == -1): 当市场最高价 high_p >= limit_price 时触发，成交价格为 max(limit_price, open_p)
+    """
+    if np.isnan(limit_price) or limit_price <= 0.0 or np.isnan(open_p) or open_p <= 0.0:
+        return False, 0.0
+
+    if side == 1:
+        if limit_price >= low_p:
+            exec_p = min(limit_price, open_p) if open_p > 0 else limit_price
+            return True, exec_p
+    elif side == -1:
+        if limit_price <= high_p:
+            exec_p = max(limit_price, open_p) if open_p > 0 else limit_price
+            return True, exec_p
+
+    return False, 0.0
+
+
+@njit(fastmath=True, nogil=True)
 def get_execution_price(
     mode: int,
     open_p: float,
@@ -86,9 +115,11 @@ def execute_trade_jit(
     trade_count: np.ndarray,
     volume: float = 0.0,
     max_volume_ratio: float = 1.0,
+    long_margin_ratio: float = 1.0,
+    short_margin_ratio: float = 1.0,
 ) -> bool:
     """
-    JIT 极速撮合单笔交易 (天然支持多空双向与盘口成交量比例限制)。
+    JIT 极速撮合单笔交易 (支持多空双向、盘口成交量限制及做多/做空保证金率校验)。
 
     Returns:
         bool: 是否成功成交
@@ -118,19 +149,24 @@ def execute_trade_jit(
     if side == 1:  # 买入逻辑 (pos += target_amount)
         raw_trade_value = target_amount * exec_raw_price
         comm = max(raw_trade_value * fee_rate, min_fee) if fee_rate > 0 else 0.0
-        total_cost = raw_trade_value + comm
+        # 考虑到做多保证金率 long_margin_ratio
+        req_margin = raw_trade_value * long_margin_ratio + comm
 
-        # 校验现金是否充足，若不足则反算可买数量
-        if total_cost > current_cash:
+        # 校验现金/保证金是否充足，若不足则反算可买数量
+        if req_margin > current_cash:
             if current_cash <= min_fee:
                 return False
-            # 重新反算可买数量
-            target_amount = (current_cash - min_fee) / (exec_raw_price * (1.0 + fee_rate))
+            # 重新反算按保证金率可买数量
+            denom = exec_raw_price * (long_margin_ratio + fee_rate)
+            if denom <= 0.0:
+                return False
+            target_amount = (current_cash - min_fee) / denom
             if target_amount <= 0.0:
                 return False
             raw_trade_value = target_amount * exec_raw_price
             comm = max(raw_trade_value * fee_rate, min_fee) if fee_rate > 0 else 0.0
-            total_cost = raw_trade_value + comm
+
+        total_cash_outflow = raw_trade_value + comm
 
         # 更新持仓与开仓均价
         new_pos = curr_pos + target_amount
@@ -145,7 +181,7 @@ def execute_trade_jit(
                 avg_costs[symbol_idx] = 0.0
 
         positions[symbol_idx] = new_pos
-        cash_arr[0] -= total_cost
+        cash_arr[0] -= total_cash_outflow
         paid_fee = comm
 
     else:  # 卖出逻辑 (side == -1, pos -= target_amount，天然支持做空)
@@ -154,6 +190,21 @@ def execute_trade_jit(
         duty = raw_trade_value * stamp_duty
         total_fee = comm + duty
         net_proceeds = raw_trade_value - total_fee
+
+        # 卖空加仓保证金校验: 若属于新建/增加空头持仓
+        if curr_pos <= 0.0:
+            req_short_margin = raw_trade_value * short_margin_ratio + total_fee
+            if req_short_margin > current_cash and short_margin_ratio > 0:
+                if current_cash <= total_fee:
+                    return False
+                target_amount = (current_cash - total_fee) / (exec_raw_price * short_margin_ratio)
+                if target_amount <= 0.0:
+                    return False
+                raw_trade_value = target_amount * exec_raw_price
+                comm = max(raw_trade_value * fee_rate, min_fee) if fee_rate > 0 else 0.0
+                duty = raw_trade_value * stamp_duty
+                total_fee = comm + duty
+                net_proceeds = raw_trade_value - total_fee
 
         new_pos = curr_pos - target_amount
         if curr_pos <= 0.0:

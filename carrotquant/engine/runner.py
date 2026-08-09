@@ -14,6 +14,7 @@ from carrotquant.engine.state import EngineState
 from carrotquant.engine.matching import (
     execute_trade_jit,
     get_execution_price,
+    check_limit_order_triggered_jit,
     MatchingMode,
     MATCHING_MODE_CLOSE,
     MATCHING_MODE_OPEN,
@@ -48,6 +49,8 @@ def run_engine_jit_kernel(
     trade_count: np.ndarray,
     max_volume_ratio: float = 1.0,
     adj_open_mat: np.ndarray = None,
+    long_margin_ratio: float = 1.0,
+    short_margin_ratio: float = 1.0,
 ):
     """
     全 JIT 内核化主 Bar 循环 (Full JIT Loop Kernel)
@@ -87,6 +90,8 @@ def run_engine_jit_kernel(
                                 trade_count=trade_count,
                                 volume=vol_val,
                                 max_volume_ratio=max_volume_ratio,
+                                long_margin_ratio=long_margin_ratio,
+                                short_margin_ratio=short_margin_ratio,
                             )
         else:
             # 当 Bar 撮合模式 (CLOSE / VWAP / TWAP)
@@ -134,6 +139,8 @@ def run_engine_jit_kernel(
                             trade_count=trade_count,
                             volume=vol_val,
                             max_volume_ratio=max_volume_ratio,
+                            long_margin_ratio=long_margin_ratio,
+                            short_margin_ratio=short_margin_ratio,
                         )
 
 
@@ -164,6 +171,10 @@ class Engine:
         max_volume_ratio: float = 1.0, # 盘口最大成交量比例 (如 0.1 表示单笔最多成交当前 Bar 10% 流动性)
         matching_mode: Union[int, str, MatchingMode] = MATCHING_MODE_CLOSE,  # 支持字符串或 Enum
         max_trades: int = 1_000_000,
+        long_margin_ratio: float = 1.0,   # 做多保证金率，默认 1.0 (100% 现货无杠杆)
+        short_margin_ratio: float = 1.0,  # 做空保证金率，默认 1.0 (100% 保证金)
+        margin_interest_rate: float = 0.0, # 做多融资年化利率 (如 0.06 表示年化 6%)
+        borrow_interest_rate: float = 0.0, # 做空融券年化利率 (如 0.08 表示年化 8%)
     ):
         self.initial_cash = initial_cash
         self.fee_rate = fee_rate
@@ -173,6 +184,10 @@ class Engine:
         self.max_volume_ratio = max_volume_ratio
         self.matching_mode = MatchingMode.parse(matching_mode)
         self.max_trades = max_trades
+        self.long_margin_ratio = long_margin_ratio
+        self.short_margin_ratio = short_margin_ratio
+        self.margin_interest_rate = margin_interest_rate
+        self.borrow_interest_rate = borrow_interest_rate
 
     def run(
         self,
@@ -257,13 +272,15 @@ class Engine:
                     trade_count=state.trade_count,
                     max_volume_ratio=self.max_volume_ratio,
                     adj_open_mat=adj_open_view,
+                    long_margin_ratio=self.long_margin_ratio,
+                    short_margin_ratio=self.short_margin_ratio,
                 )
 
 
             elif strategy is not None:
                 # Python 回调策略模式
                 orders_buffer = []
-                pending_orders = []
+                active_orders = []  # 未成交与跨 Bar 限价单队列
 
                 # 确定使用的收盘价矩阵 (优先使用复权视图计算策略信号)
                 close_view = chunk.adj.close if hasattr(chunk, "adj") else chunk.close
@@ -287,71 +304,67 @@ class Engine:
                     volume_mat=chunk.volume,
                     amount_mat=chunk.amount,
                     is_tradable_mat=chunk.is_tradable,
+                    adj_factor=getattr(chunk, "adj_factor", None),
+                    custom_fields=getattr(chunk, "custom_fields", None),
                     positions=state.positions,
                     cash=cash_arr[0],
                     orders_buffer=orders_buffer,
                 )
 
                 for t in range(chunk.n_steps):
-                    # 1. 如果是 OPEN 撮合模式，优先在 t 步开盘撮合 t-1 步产生的挂单 (彻底消除未来函数隐患)
-                    if self.matching_mode == MATCHING_MODE_OPEN and len(pending_orders) > 0:
-                        for side, sym_idx, target_amount in pending_orders:
-                            raw_p = chunk.open[t, sym_idx]
-                            adj_p = open_view[t, sym_idx]
-                            vol_val = chunk.volume[t, sym_idx] if chunk.volume is not None else 0.0
+                    # 1. 撤单处理: 从 active_orders 中移除已被标记撤销的订单 ID
+                    if ctx.canceled_order_ids:
+                        active_orders = [ord_item for ord_item in active_orders if ord_item[0] not in ctx.canceled_order_ids]
 
-                            execute_trade_jit(
-                                step_idx=t,
-                                symbol_idx=sym_idx,
-                                side=side,
-                                target_amount=target_amount,
-                                raw_price=raw_p,
-                                adj_price=adj_p,
-                                fee_rate=self.fee_rate,
-                                min_fee=self.min_fee,
-                                stamp_duty=self.stamp_duty,
-                                slippage=self.slippage,
-                                positions=state.positions,
-                                avg_costs=state.avg_costs,
-                                cash_arr=cash_arr,
-                                trade_logs=state.trade_logs,
-                                trade_count=state.trade_count,
-                                volume=vol_val,
-                                max_volume_ratio=self.max_volume_ratio,
-                            )
-                        pending_orders.clear()
+                    # 2. 撮合之前的未成交订单 (包括跨 Bar 限价单与 OPEN 模式延迟挂单)
+                    if len(active_orders) > 0:
+                        remaining_active = []
+                        for ord_item in active_orders:
+                            oid, otype, side, sym_idx, target_amount, limit_price = ord_item
 
-                    # 2. 运行当前 Bar 的策略逻辑
-                    ctx.update_step(t, cash_arr[0])
-                    strategy(ctx)
-
-                    # 3. 处理当前 Bar 产生的订单
-                    if len(orders_buffer) > 0:
-                        if self.matching_mode == MATCHING_MODE_OPEN:
-                            # OPEN 模式下挂单延迟至 t+1 步开盘撮合
-                            pending_orders.extend(orders_buffer)
-                        else:
-                            # CLOSE / VWAP / TWAP 模式下当 Bar 实时撮合
-                            for side, sym_idx, target_amount in orders_buffer:
-                                raw_p = get_execution_price(
-                                    self.matching_mode,
+                            if otype == 1:
+                                # 限价单撮合校验
+                                is_trig, exec_p = check_limit_order_triggered_jit(
+                                    side,
+                                    limit_price,
                                     chunk.open[t, sym_idx],
                                     chunk.high[t, sym_idx],
                                     chunk.low[t, sym_idx],
-                                    chunk.raw_close[t, sym_idx],
-                                    chunk.volume[t, sym_idx],
-                                    chunk.amount[t, sym_idx],
                                 )
-                                adj_p = get_execution_price(
-                                    self.matching_mode,
-                                    open_view[t, sym_idx],
-                                    high_view[t, sym_idx],
-                                    low_view[t, sym_idx],
-                                    close_view[t, sym_idx],
-                                    chunk.volume[t, sym_idx],
-                                    chunk.amount[t, sym_idx],
-                                )
+                                if is_trig:
+                                    raw_p = exec_p
+                                    factor = (open_view[t, sym_idx] / chunk.open[t, sym_idx]) if chunk.open[t, sym_idx] > 0 else 1.0
+                                    adj_p = exec_p * factor
+                                    vol_val = chunk.volume[t, sym_idx] if chunk.volume is not None else 0.0
 
+                                    execute_trade_jit(
+                                        step_idx=t,
+                                        symbol_idx=sym_idx,
+                                        side=side,
+                                        target_amount=target_amount,
+                                        raw_price=raw_p,
+                                        adj_price=adj_p,
+                                        fee_rate=self.fee_rate,
+                                        min_fee=self.min_fee,
+                                        stamp_duty=self.stamp_duty,
+                                        slippage=self.slippage,
+                                        positions=state.positions,
+                                        avg_costs=state.avg_costs,
+                                        cash_arr=cash_arr,
+                                        trade_logs=state.trade_logs,
+                                        trade_count=state.trade_count,
+                                        volume=vol_val,
+                                        max_volume_ratio=self.max_volume_ratio,
+                                        long_margin_ratio=self.long_margin_ratio,
+                                        short_margin_ratio=self.short_margin_ratio,
+                                    )
+                                else:
+                                    remaining_active.append(ord_item)
+
+                            elif otype == 0 and self.matching_mode == MATCHING_MODE_OPEN:
+                                # OPEN 模式下上一步留存的市价单
+                                raw_p = chunk.open[t, sym_idx]
+                                adj_p = open_view[t, sym_idx]
                                 vol_val = chunk.volume[t, sym_idx] if chunk.volume is not None else 0.0
 
                                 execute_trade_jit(
@@ -372,8 +385,128 @@ class Engine:
                                     trade_count=state.trade_count,
                                     volume=vol_val,
                                     max_volume_ratio=self.max_volume_ratio,
+                                    long_margin_ratio=self.long_margin_ratio,
+                                    short_margin_ratio=self.short_margin_ratio,
                                 )
+                        active_orders = remaining_active
+
+                    # 3. 运行当前 Bar 的策略逻辑
+                    ctx.update_step(t, cash_arr[0])
+                    strategy(ctx)
+
+                    # 4. 处理当前 Bar 新产生的订单
+                    if len(orders_buffer) > 0:
+                        for raw_order in orders_buffer:
+                            # 规范化订单格式
+                            if len(raw_order) == 3:
+                                # 兼容旧格式 (side, sym_idx, target_amount)
+                                side, sym_idx, target_amount = raw_order
+                                oid, otype, limit_price = 0, 0, 0.0
+                            else:
+                                oid, otype, side, sym_idx, target_amount, limit_price = raw_order
+
+                            if otype == 1:
+                                # 新产生的限价单：首先在当 Bar 进行一次触发判定
+                                is_trig, exec_p = check_limit_order_triggered_jit(
+                                    side,
+                                    limit_price,
+                                    chunk.open[t, sym_idx],
+                                    chunk.high[t, sym_idx],
+                                    chunk.low[t, sym_idx],
+                                )
+                                if is_trig:
+                                    raw_p = exec_p
+                                    factor = (open_view[t, sym_idx] / chunk.open[t, sym_idx]) if chunk.open[t, sym_idx] > 0 else 1.0
+                                    adj_p = exec_p * factor
+                                    vol_val = chunk.volume[t, sym_idx] if chunk.volume is not None else 0.0
+
+                                    execute_trade_jit(
+                                        step_idx=t,
+                                        symbol_idx=sym_idx,
+                                        side=side,
+                                        target_amount=target_amount,
+                                        raw_price=raw_p,
+                                        adj_price=adj_p,
+                                        fee_rate=self.fee_rate,
+                                        min_fee=self.min_fee,
+                                        stamp_duty=self.stamp_duty,
+                                        slippage=self.slippage,
+                                        positions=state.positions,
+                                        avg_costs=state.avg_costs,
+                                        cash_arr=cash_arr,
+                                        trade_logs=state.trade_logs,
+                                        trade_count=state.trade_count,
+                                        volume=vol_val,
+                                        max_volume_ratio=self.max_volume_ratio,
+                                        long_margin_ratio=self.long_margin_ratio,
+                                        short_margin_ratio=self.short_margin_ratio,
+                                    )
+                                else:
+                                    # 当 Bar 未能触发，加入 active_orders 留存后续 Bar 匹配
+                                    active_orders.append((oid, otype, side, sym_idx, target_amount, limit_price))
+
+                            else:
+                                # 市价单
+                                if self.matching_mode == MATCHING_MODE_OPEN:
+                                    active_orders.append((oid, otype, side, sym_idx, target_amount, limit_price))
+                                else:
+                                    raw_p = get_execution_price(
+                                        self.matching_mode,
+                                        chunk.open[t, sym_idx],
+                                        chunk.high[t, sym_idx],
+                                        chunk.low[t, sym_idx],
+                                        chunk.raw_close[t, sym_idx],
+                                        chunk.volume[t, sym_idx],
+                                        chunk.amount[t, sym_idx],
+                                    )
+                                    adj_p = get_execution_price(
+                                        self.matching_mode,
+                                        open_view[t, sym_idx],
+                                        high_view[t, sym_idx],
+                                        low_view[t, sym_idx],
+                                        close_view[t, sym_idx],
+                                        chunk.volume[t, sym_idx],
+                                        chunk.amount[t, sym_idx],
+                                    )
+                                    vol_val = chunk.volume[t, sym_idx] if chunk.volume is not None else 0.0
+
+                                    execute_trade_jit(
+                                        step_idx=t,
+                                        symbol_idx=sym_idx,
+                                        side=side,
+                                        target_amount=target_amount,
+                                        raw_price=raw_p,
+                                        adj_price=adj_p,
+                                        fee_rate=self.fee_rate,
+                                        min_fee=self.min_fee,
+                                        stamp_duty=self.stamp_duty,
+                                        slippage=self.slippage,
+                                        positions=state.positions,
+                                        avg_costs=state.avg_costs,
+                                        cash_arr=cash_arr,
+                                        trade_logs=state.trade_logs,
+                                        trade_count=state.trade_count,
+                                        volume=vol_val,
+                                        max_volume_ratio=self.max_volume_ratio,
+                                        long_margin_ratio=self.long_margin_ratio,
+                                        short_margin_ratio=self.short_margin_ratio,
+                                    )
                         orders_buffer.clear()
+
+                    # 5. 扣除每日融资利息与融券利息 (如果设置了利率)
+                    daily_margin_r = self.margin_interest_rate / 252.0
+                    daily_borrow_r = self.borrow_interest_rate / 252.0
+
+                    if cash_arr[0] < 0.0 and daily_margin_r > 0.0:
+                        cash_arr[0] -= abs(cash_arr[0]) * daily_margin_r
+
+                    if daily_borrow_r > 0.0:
+                        for i in range(chunk.n_symbols):
+                            if state.positions[i] < 0.0:
+                                curr_price = chunk.close[t, i]
+                                if not np.isnan(curr_price) and curr_price > 0:
+                                    short_val = abs(state.positions[i]) * curr_price
+                                    cash_arr[0] -= short_val * daily_borrow_r
 
                     state.cash = cash_arr[0]
                     state.cash_history[t] = state.cash

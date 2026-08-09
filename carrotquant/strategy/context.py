@@ -5,13 +5,13 @@ BarContext: 策略运行期上下文与物理防未来函数切片断言
 严格限制时间切片边界在 [:t+1]，任何读取 t+1 以上数据的行为在物理内存层面抛出 IndexError。
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional, Dict, Union
 import numpy as np
 
 
 class AdjContext:
     """
-    策略运行期复权行情快照与历史切片视角
+    策略运行期复权行情快照与历史切片视角 (动态懒算与后向兼容)
     """
 
     def __init__(self, ctx: "BarContext"):
@@ -19,35 +19,67 @@ class AdjContext:
 
     @property
     def open(self) -> np.ndarray:
-        return self._ctx._adj_open_mat[self._ctx.step, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_open_mat[self._ctx.step, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.open
+        return self._ctx.open * self._ctx._adj_factor[self._ctx.step, :]
 
     @property
     def high(self) -> np.ndarray:
-        return self._ctx._adj_high_mat[self._ctx.step, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_high_mat[self._ctx.step, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.high
+        return self._ctx.high * self._ctx._adj_factor[self._ctx.step, :]
 
     @property
     def low(self) -> np.ndarray:
-        return self._ctx._adj_low_mat[self._ctx.step, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_low_mat[self._ctx.step, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.low
+        return self._ctx.low * self._ctx._adj_factor[self._ctx.step, :]
 
     @property
     def close(self) -> np.ndarray:
-        return self._ctx._adj_close_mat[self._ctx.step, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_close_mat[self._ctx.step, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.close
+        return self._ctx.close * self._ctx._adj_factor[self._ctx.step, :]
 
     @property
     def open_history(self) -> np.ndarray:
-        return self._ctx._adj_open_mat[: self._ctx.step + 1, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_open_mat[: self._ctx.step + 1, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.open_history
+        return self._ctx.open_history * self._ctx._adj_factor[: self._ctx.step + 1, :]
 
     @property
     def high_history(self) -> np.ndarray:
-        return self._ctx._adj_high_mat[: self._ctx.step + 1, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_high_mat[: self._ctx.step + 1, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.high_history
+        return self._ctx.high_history * self._ctx._adj_factor[: self._ctx.step + 1, :]
 
     @property
     def low_history(self) -> np.ndarray:
-        return self._ctx._adj_low_mat[: self._ctx.step + 1, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_low_mat[: self._ctx.step + 1, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.low_history
+        return self._ctx.low_history * self._ctx._adj_factor[: self._ctx.step + 1, :]
 
     @property
     def close_history(self) -> np.ndarray:
-        return self._ctx._adj_close_mat[: self._ctx.step + 1, :]
+        if self._ctx._has_explicit_adj:
+            return self._ctx._adj_close_mat[: self._ctx.step + 1, :]
+        if self._ctx._adj_factor is None:
+            return self._ctx.close_history
+        return self._ctx.close_history * self._ctx._adj_factor[: self._ctx.step + 1, :]
 
 
 class BarContext:
@@ -72,6 +104,8 @@ class BarContext:
         volume_mat: Optional[np.ndarray] = None,
         amount_mat: Optional[np.ndarray] = None,
         is_tradable_mat: Optional[np.ndarray] = None,
+        adj_factor: Optional[np.ndarray] = None,
+        custom_fields: Optional[Any] = None,
         positions: Optional[np.ndarray] = None,
         cash: float = 0.0,
         orders_buffer: Optional[List] = None,
@@ -86,6 +120,10 @@ class BarContext:
         self._low_mat = low_mat
         self._close_mat = close_mat
         self._raw_close_mat = raw_close_mat if raw_close_mat is not None else close_mat
+
+        self._adj_factor = adj_factor
+        self._custom_fields = custom_fields if custom_fields is not None else {}
+        self._has_explicit_adj = adj_close_mat is not None
 
         self._adj_close_mat = adj_close_mat if adj_close_mat is not None else close_mat
         self._adj_open_mat = adj_open_mat if adj_open_mat is not None else open_mat
@@ -110,8 +148,10 @@ class BarContext:
         self.positions = positions
         self.cash = cash
 
-        # 下单指令缓冲 [(side, symbol_idx, amount), ...]
+        # 下单指令缓冲 [(order_id, order_type, side, symbol_idx, amount, price), ...]
         self.orders_buffer = orders_buffer if orders_buffer is not None else []
+        self._order_counter = 0
+        self.canceled_order_ids = set()
 
         # 复权子视角
         self.adj = AdjContext(self)
@@ -121,6 +161,7 @@ class BarContext:
         self.step = step
         self.cash = cash
         self.orders_buffer.clear()
+        self.canceled_order_ids.clear()
 
         self.open = self._open_mat[step, :]
         self.high = self._high_mat[step, :]
@@ -134,6 +175,25 @@ class BarContext:
         if self._is_tradable_mat is not None:
             self.is_tradable = self._is_tradable_mat[step, :]
 
+    def get(self, name: str) -> np.ndarray:
+        """获取当前时间步 t 的自定义列 1D 快照切片 (N,)"""
+        mat = self._custom_fields[name]
+        return mat[self.step, :]
+
+    def get_history(self, name: str) -> np.ndarray:
+        """获取截至当前时间步 t 的自定义列历史 2D 切片 [:t+1, :] (物理严格防未来)"""
+        mat = self._custom_fields[name]
+        return mat[: self.step + 1, :]
+
+    def __getitem__(self, name: str) -> np.ndarray:
+        """字典下标简写支持 `ctx['b']`"""
+        return self.get(name)
+
+    @property
+    def custom(self):
+        """自定义特征映射代理"""
+        return self._custom_fields
+
     @property
     def datetime(self) -> str:
         """当前 Bar 时间戳字符串"""
@@ -145,17 +205,50 @@ class BarContext:
         """单标的快捷当前收盘价"""
         return float(self.close[0])
 
-    def buy(self, symbol_idx: int = 0, amount: float = 0.0, stock_idx: Optional[int] = None):
-        """挂买单 (pos += amount)"""
+    def buy(self, symbol_idx: int = 0, amount: float = 0.0, stock_idx: Optional[int] = None) -> int:
+        """挂买入市价单 (pos += amount)"""
         target_idx = stock_idx if stock_idx is not None else symbol_idx
         if amount > 0:
+            # 格式: (side=1, symbol_idx, amount)
             self.orders_buffer.append((1, target_idx, float(amount)))
+            return 0
+        return 0
 
-    def sell(self, symbol_idx: int = 0, amount: float = 0.0, stock_idx: Optional[int] = None):
-        """挂卖单 (pos -= amount，天然支持做空)"""
+    def sell(self, symbol_idx: int = 0, amount: float = 0.0, stock_idx: Optional[int] = None) -> int:
+        """挂卖出市价单 (pos -= amount，天然支持做空)"""
         target_idx = stock_idx if stock_idx is not None else symbol_idx
         if amount > 0:
+            # 格式: (side=-1, symbol_idx, amount)
             self.orders_buffer.append((-1, target_idx, float(amount)))
+            return 0
+        return 0
+
+    def buy_limit(self, symbol_idx: int = 0, amount: float = 0.0, price: float = 0.0, stock_idx: Optional[int] = None) -> int:
+        """挂买入限价单 (当市场最低价 <= limit_price 时触发买入)"""
+        target_idx = stock_idx if stock_idx is not None else symbol_idx
+        if amount > 0 and price > 0:
+            self._order_counter += 1
+            order_id = self._order_counter
+            # 格式: (order_id, order_type=1, side=1, symbol_idx, amount, price)
+            self.orders_buffer.append((order_id, 1, 1, target_idx, float(amount), float(price)))
+            return order_id
+        return 0
+
+    def sell_limit(self, symbol_idx: int = 0, amount: float = 0.0, price: float = 0.0, stock_idx: Optional[int] = None) -> int:
+        """挂卖无限价单 (当市场最高价 >= limit_price 时触发卖出)"""
+        target_idx = stock_idx if stock_idx is not None else symbol_idx
+        if amount > 0 and price > 0:
+            self._order_counter += 1
+            order_id = self._order_counter
+            # 格式: (order_id, order_type=1, side=-1, symbol_idx, amount, price)
+            self.orders_buffer.append((order_id, 1, -1, target_idx, float(amount), float(price)))
+            return order_id
+        return 0
+
+    def cancel_order(self, order_id: int):
+        """撤销指定 ID 的未成交订单"""
+        if order_id > 0:
+            self.canceled_order_ids.add(order_id)
 
     def buy_single(self, amount: float):
         """单标的快捷买入"""
