@@ -6,8 +6,7 @@
 import pytest
 import numpy as np
 import polars as pl
-from carrotquant import strategy, BarContext, Engine
-from carrotquant.data.column_loader import MarketDataContainer, ColumnDataLoader
+from carrotquant import strategy, BarContext, Engine, MarketData
 from carrotquant.engine.matching import execute_trade_jit
 
 
@@ -21,7 +20,7 @@ def test_edge_case_suspended_stocks():
     close_p = np.array([[10.0, 20.0], [np.nan, 20.5]])
     vol = np.array([[1000.0, 5000.0], [0.0, 5500.0]])
 
-    data = MarketDataContainer(
+    data = MarketData(
         timestamps=timestamps,
         symbols=symbols,
         open_price=open_p,
@@ -38,9 +37,9 @@ def test_edge_case_suspended_stocks():
 
     @strategy
     def try_buy_suspended(ctx: BarContext):
-        for i in range(ctx.n_stocks):
+        for i in range(ctx.n_symbols):
             if ctx.is_tradable[i]:
-                ctx.buy(i, 100)
+                ctx.buy(symbol_idx=i, amount=100)
 
     engine = Engine(initial_cash=100_000.0)
     results = engine.run(strategy=try_buy_suspended, data=data)
@@ -60,7 +59,7 @@ def test_edge_case_insufficient_cash():
     # 尝试买入，因现金小于 min_fee 必须返回 False 拒绝成交
     success = execute_trade_jit(
         step_idx=0,
-        stock_idx=0,
+        symbol_idx=0,
         side=1,
         target_amount=100.0,
         raw_price=10.0,
@@ -79,3 +78,4 @@ def test_edge_case_insufficient_cash():
     assert success is False
     assert positions[0] == 0.0
     assert cash_arr[0] == 2.0  # 现金未发生扣减
+

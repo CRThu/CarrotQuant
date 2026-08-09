@@ -12,16 +12,17 @@ def test_calc_sma_step_jit():
     prices = np.array([[10.0], [12.0], [14.0], [16.0], [18.0]], dtype=np.float64)
 
     # 步长不足窗口长度 3 时返回 NaN
-    assert np.isnan(calc_sma_step_jit(prices, step=0, stock_idx=0, window=3))
-    assert np.isnan(calc_sma_step_jit(prices, step=1, stock_idx=0, window=3))
+    assert np.isnan(calc_sma_step_jit(prices, step=0, symbol_idx=0, window=3))
+    assert np.isnan(calc_sma_step_jit(prices, step=1, symbol_idx=0, window=3))
 
     # step=2 (价格: 10, 12, 14) -> SMA = 12.0
-    sma2 = calc_sma_step_jit(prices, step=2, stock_idx=0, window=3)
+    sma2 = calc_sma_step_jit(prices, step=2, symbol_idx=0, window=3)
     assert sma2 == 12.0
 
     # step=4 (价格: 14, 16, 18) -> SMA = 16.0
-    sma4 = calc_sma_step_jit(prices, step=4, stock_idx=0, window=3)
+    sma4 = calc_sma_step_jit(prices, step=4, symbol_idx=0, window=3)
     assert sma4 == 16.0
+
 
 
 def test_calc_ema_step_jit():

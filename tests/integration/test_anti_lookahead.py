@@ -7,26 +7,25 @@
 
 import pytest
 import numpy as np
-from carrotquant import strategy, BarContext, Engine
-from carrotquant.data.column_loader import MarketDataContainer
+from carrotquant import strategy, BarContext, Engine, MarketData
 
 
 def test_anti_lookahead_chaos_injection():
     # 1. 构建干净的标准数据集
     np.random.seed(12345)
     n_steps = 100
-    n_stocks = 3
+    n_symbols = 3
     timestamps = np.array([f"2024-01-{i+1:02d}" for i in range(n_steps)])
     symbols = ["000001.SZ", "600000.SH", "300750.SZ"]
 
-    clean_close = 10.0 + np.cumsum(np.random.randn(n_steps, n_stocks) * 0.2, axis=0)
+    clean_close = 10.0 + np.cumsum(np.random.randn(n_steps, n_symbols) * 0.2, axis=0)
     clean_open = clean_close * 0.99
     clean_high = clean_close * 1.02
     clean_low = clean_close * 0.98
-    clean_vol = np.full((n_steps, n_stocks), 1000.0)
+    clean_vol = np.full((n_steps, n_symbols), 1000.0)
     clean_amt = clean_close * clean_vol
 
-    clean_data = MarketDataContainer(
+    clean_data = MarketData(
         timestamps=timestamps,
         symbols=symbols,
         open_price=clean_open,
@@ -43,16 +42,16 @@ def test_anti_lookahead_chaos_injection():
         if ctx.step < 10:
             return
 
-        for i in range(ctx.n_stocks):
+        for i in range(ctx.n_symbols):
             # 获取严格截止到当前步 t 的历史切片
-            c_hist = ctx.close_history[:, i]
+            c_hist = ctx.adj.close_history[:, i]
             ma5 = np.mean(c_hist[-5:])
             ma10 = np.mean(c_hist[-10:])
 
             if ma5 > ma10 and ctx.positions[i] == 0:
-                ctx.buy(i, 100)
+                ctx.buy(symbol_idx=i, amount=100)
             elif ma5 < ma10 and ctx.positions[i] > 0:
-                ctx.sell(i, ctx.positions[i])
+                ctx.sell(symbol_idx=i, amount=ctx.positions[i])
 
     # 运行标准回测
     engine = Engine(initial_cash=100_000.0)
@@ -60,14 +59,14 @@ def test_anti_lookahead_chaos_injection():
 
     # 3. 构造注入 Chaos 极端噪声的数据集 (在后 50% 步的数据中注入 1000 倍随机波幅噪声)
     noisy_close = clean_close.copy()
-    noisy_close[50:, :] += np.random.randn(50, n_stocks) * 1000.0
+    noisy_close[50:, :] += np.random.randn(50, n_symbols) * 1000.0
     noisy_open = noisy_close * 0.99
     noisy_high = noisy_close * 1.05
     noisy_low = noisy_close * 0.95
     noisy_vol = clean_vol.copy()
     noisy_amt = noisy_close * noisy_vol
 
-    noisy_data = MarketDataContainer(
+    noisy_data = MarketData(
         timestamps=timestamps,
         symbols=symbols,
         open_price=noisy_open,
@@ -79,7 +78,6 @@ def test_anti_lookahead_chaos_injection():
     )
 
     # 在后半段步长到达之前（即 t <= 49），两者的交易决策必须 100% 字节级一致
-    # 我们可以通过拦截 t=49 前的交易日志断言完全相同
     clean_logs_before_50 = clean_results.trade_logs.filter(pl_col_step_less_than_50(clean_results.trade_logs))
     
     noisy_results = engine.run(strategy=ma_cross_strategy, data=noisy_data)
@@ -95,3 +93,4 @@ def test_anti_lookahead_chaos_injection():
 def pl_col_step_less_than_50(df):
     import polars as pl
     return pl.col("step_idx") < 50
+

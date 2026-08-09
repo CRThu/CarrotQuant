@@ -90,10 +90,14 @@ def test_column_loader_from_mock_csv(tmp_path):
     container = ColumnDataLoader.load_csv(path=csv_dir, adj_factor_path=adj_dir)
 
     assert container.n_steps == 2
-    assert container.n_stocks == 2
+    assert container.n_symbols == 2
+    # 确认原始价格为未复权: 10.0, 20.0
+    assert container.close[0, 0] == 10.0
+    assert container.close[0, 1] == 20.0
     # 确认乘上复权因子后: 10.0 * 1.1 = 11.0, 20.0 * 1.2 = 24.0
-    assert container.close[0, 0] == 11.0
-    assert container.close[0, 1] == 24.0
+    assert container.adj.close[0, 0] == 11.0
+    assert container.adj.close[0, 1] == 24.0
+
 
 
 def test_chunk_streamer():

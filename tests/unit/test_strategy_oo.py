@@ -31,7 +31,7 @@ def test_bar_context_bound_checking():
     # 模拟在时间步 t=1 (对应第2个元素)
     ctx = BarContext(
         step=1,
-        n_stocks=1,
+        n_symbols=1,
         timestamps=timestamps,
         open_mat=open_p,
         high_mat=open_p,
@@ -61,3 +61,4 @@ def test_bar_context_bound_checking():
     ctx.buy_single(100)
     assert len(orders) == 1
     assert orders[0] == (1, 0, 100.0)
+

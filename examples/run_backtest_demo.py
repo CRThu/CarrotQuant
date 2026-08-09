@@ -51,7 +51,7 @@ def main():
 
     print(" [OK] 行情装载与数据对齐成功!")
     print(f"   - 时间步 (T): {data.n_steps} Bars (时间开端: {data.timestamps[0]} ~ {data.timestamps[-1]})")
-    print(f"   - 股票池 (N): {data.n_stocks} 只标的")
+    print(f"   - 标的池 (N): {data.n_symbols} 只标的")
     print(f"   - 2D 矩阵内存形态: {data.close.shape}, C-Contiguous={data.close.flags.c_contiguous}")
 
     # 2. 定义双均线交叉选股策略 (使用 @strategy 装饰器)
@@ -60,12 +60,12 @@ def main():
         if ctx.step < 20:  # 预留 20 天计算均线
             return
 
-        for i in range(ctx.n_stocks):
+        for i in range(ctx.n_symbols):
             if not ctx.is_tradable[i]:
                 continue
 
             # 读取该标的截至当前步 t 的后复权历史收盘价
-            history_close = ctx.close_history[-20:, i]
+            history_close = ctx.adj.close_history[-20:, i]
             if np.isnan(history_close).any():
                 continue
 
@@ -74,24 +74,26 @@ def main():
 
             # 金叉买入 100 股
             if ma5 > ma20 and ctx.positions[i] == 0:
-                ctx.buy(stock_idx=i, amount=100)
+                ctx.buy(symbol_idx=i, amount=100)
             # 死叉清仓卖出
             elif ma5 < ma20 and ctx.positions[i] > 0:
-                ctx.sell(stock_idx=i, amount=ctx.positions[i])
+                ctx.sell(symbol_idx=i, amount=ctx.positions[i])
 
-    # 3. 初始化回测引擎 (包含 A 股真实双边佣金 5 元限制、印花税、万一滑点)
+    # 3. 初始化通用回测引擎
     print("\n -> [Step 2] 初始化 CarrotQuant 事件驱动引擎...")
     engine = Engine(
         initial_cash=1_000_000.0,
         fee_rate=0.0003,      # 佣金万三
         min_fee=5.0,          # 最小佣金 5 元
-        stamp_duty=0.0005,    # 卖出印花税千分之0.5
+        stamp_duty=0.0005,    # 印花税千0.5
         slippage=0.0001,      # 交易滑点万一
+        matching_mode="close",  # 字符串指定按收盘价撮合
     )
 
     # 4. 执行极速事件驱动回测
     print(" -> [Step 3] 执行回测...")
     results = engine.run(strategy=dual_ma_cross_strategy, data=data)
+
 
     # 5. 输出分析结果
     print("\n -> [Step 4] 回测结果分析与绩效报告:")
