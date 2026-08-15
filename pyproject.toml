@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "carrotquant-engine"
-version = "1.0.2"
+version = "1.0.3"
 description = "High-performance 1m+ Numba event-driven quantitative backtesting engine for A-share full-market trading"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -34,7 +34,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.bumpversion]
-current_version = "1.0.2"
+current_version = "1.0.3"
 commit = true
 tag = true
 allow_dirty = true
