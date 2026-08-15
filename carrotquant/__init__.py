@@ -2,7 +2,7 @@
 CarrotQuant: 高性能全市场 Numba 事件驱动量化回测引擎
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from carrotquant.strategy.base import strategy
 from carrotquant.strategy.context import BarContext
