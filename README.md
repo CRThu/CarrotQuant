@@ -1,21 +1,37 @@
-# CarrotQuant
+# CarrotQuant Engine (`carrotquant-engine`)
 
-**CarrotQuant** 是基于 Python/Numba 的 1m+ 高性能通用全市场 (A股/美股/期货) 事件驱动与向量化量化回测引擎。
+[![PyPI version](https://img.shields.io/pypi/v/carrotquant-engine.svg)](https://pypi.org/project/carrotquant-engine/)
+[![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue)](https://pypi.org/project/carrotquant-engine/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-## 🌟 核心亮点
-- **极致吞吐量**：基于 Numba JIT 打平内联与连续 2D C-Contiguous 内存布局，零堆分配开销 (3000万+ Ticks/s)。
-- **通用多空机制**：`buy` / `sell` 天然支持做多与做空 (`pos += amount` 与 `pos -= amount`)，统一浮动资产计算 $PV = \text{Cash} + \sum \text{pos}_i \times \text{close}_i$。
-- **轻量动态复权架构**：`data.close` 为原始真实交割价，`data.adj.close` / `ctx.adj.close` 为动态懒求值复权视角。无复权需求或已有复权时零开销。
-- **多表与自定义列按需/懒加载 (`LazyCustomFields`)**：自动支持多表字段与自定义特征列（如因子 `factor_b`、`pe_ttm`、`vwap` 等）。支持 `custom_columns` 显式筛选与字段级懒透视，访问时才生成 2D 矩阵，未访问零开销。
-- **物理严格防未来切片**：策略通过 `ctx.get('factor_b')`（当前 $t$ 步切片）与 `ctx.get_history('factor_b')`（物理边界 `[:t+1, :]`）访问数据，绝无未来函数污染。
-- **盘口流动性限制**：支持设置 `max_volume_ratio`（例如 `0.1` 表示单笔交易上限为当前 Bar 10% 成交量）。
-- **限价单与撤单机制**：支持 `buy_limit` / `sell_limit` 限价单与 `cancel_order` 撤单，支持跨 Bar 订单保存与价格触达自动撮合。
-- **做多/做空保证金率与融资融券扣费**：支持设置 `long_margin_ratio` / `short_margin_ratio`（保证金率校验），以及 `margin_interest_rate` / `borrow_interest_rate`（日频融资与融券利息扣除）。
-- **统一极简单入口 API (`engine.run`)**：无论内存单 Container、磁盘分块 Stream，还是 JIT 信号矩阵，统一通过 `engine.run(...)` 单一方法启动。
+**CarrotQuant Engine** 是基于 Python 与 Numba 的事件驱动与向量化量化回测引擎，支持全市场多品种的回测、撮合与绩效分析。
+
+## 📦 安装指南 (Installation)
+
+环境要求：**Python >= 3.12**（支持 Python 3.12 / 3.13 / 3.14+）。
+
+```bash
+# 使用 pip 安装
+pip install carrotquant-engine
+
+# 或使用 uv 安装
+uv add carrotquant-engine
+```
+
+## 🛠️ 特性 (Features)
+- **高性能计算内核**：基于 Numba JIT 与连续 2D C-Contiguous 内存布局，降低循环执行与内存分配开销。
+- **多空双向撮合**：`buy` / `sell` 支持做多与做空 (`pos += amount` 与 `pos -= amount`)，统一浮动资产计算 $PV = \text{Cash} + \sum \text{pos}_i \times \text{close}_i$。
+- **轻量动态复权**：`data.close` 为原始成交价，`data.adj.close` / `ctx.adj.close` 提供按需计算的复权视图。
+- **多表与自定义字段支持 (`LazyCustomFields`)**：支持多表字段与自定义特征列（如因子 `factor`、`pe_ttm`、`vwap` 等），支持 `custom_columns` 筛选与按需生成 2D 矩阵。
+- **防未来函数切片**：策略通过 `ctx.get('factor')`（当前 $t$ 步快照）与 `ctx.get_history('factor')`（物理边界 `[:t+1, :]`）访问数据，避免未来数据泄露。
+- **流动性与撮合限制**：支持 `max_volume_ratio`（盘口成交量比例限制）、限价单 `buy_limit` / `sell_limit` 与 `cancel_order` 撤单机制。
+- **保证金与融资融券费率**：支持设置 `long_margin_ratio` / `short_margin_ratio`（保证金率校验），以及 `margin_interest_rate` / `borrow_interest_rate`（日频利息计提）。
+- **统一运行入口 (`engine.run`)**：支持内存数据 `MarketData`、磁盘分块流 `scan_parquet_chunks` 以及向量化信号矩阵。
 
 ## 🚀 快速开始
 
 ```python
+# 安装包名为 carrotquant-engine，代码中统一导入 carrotquant
 from carrotquant import strategy, BarContext, Engine, ColumnDataLoader
 
 # 1. 定义策略 (使用 @strategy 装饰器，支持自定义列 factor_b)
