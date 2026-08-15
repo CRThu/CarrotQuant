@@ -1,5 +1,5 @@
-# Data files
-data/
+# Data files (仅忽略根目录测试数据)
+/data/
 *.log
 
 # Python Virtual Environments
