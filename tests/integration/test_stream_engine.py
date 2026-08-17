@@ -4,7 +4,7 @@
 
 import pytest
 import numpy as np
-from carrotquant import strategy, BarContext, Engine, MarketData
+from cq.engine import strategy, BarContext, Engine, MarketData
 
 
 def generate_chunk(start_idx: int, n_steps: int = 10, n_symbols: int = 2) -> MarketData:

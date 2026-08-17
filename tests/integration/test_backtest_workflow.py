@@ -4,8 +4,8 @@
 
 import pytest
 import numpy as np
-from carrotquant import strategy, BarContext, Engine
-from carrotquant.data.column_loader import MarketDataContainer
+from cq.engine import strategy, BarContext, Engine
+from cq.engine.feed.column_loader import MarketDataContainer
 
 
 def test_full_backtest_workflow():

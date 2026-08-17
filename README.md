@@ -31,8 +31,8 @@ uv add carrotquant-engine
 ## 🚀 快速开始
 
 ```python
-# 安装包名为 carrotquant-engine，代码中统一导入 carrotquant
-from carrotquant import strategy, BarContext, Engine, ColumnDataLoader
+# 安装包名为 carrotquant-engine，代码中统一导入 cq.engine
+from cq.engine import strategy, BarContext, Engine, ColumnDataLoader
 
 # 1. 定义策略 (使用 @strategy 装饰器，支持自定义列 factor_b)
 @strategy

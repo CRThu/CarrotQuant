@@ -11,11 +11,11 @@
 - **流式驱动**：支持单块内存 `MarketData` 及按年/月分块的磁盘级 `scan_parquet_chunks` 惰性数据流。
 
 ## 2. 代码分层与架构规范
-- `carrotquant.data`: Parquet/CSV 列式读取、Hive 分区装载、`MarketData` 矩阵对齐与 `scan_parquet_chunks` 流式迭代。
-- `carrotquant.engine`: JIT 撮合内核 (`matching.py`)、`MatchingMode` 枚举/参数解析与 SoA 状态管理 (`state.py`)。
-- `carrotquant.strategy`: `@strategy` 装饰器与 `BarContext` 上下文切片 (`ctx.symbol_idx`, `ctx.adj.close_history`)。
-- `carrotquant.indicators`: Numba 兼容的递推指标算子。
-- `carrotquant.analytics`: 回测结果汇总、交易日志与 Polars 绩效度量。
+- `cq.engine.feed`: Parquet/CSV 列式读取、Hive 分区装载、`MarketData` 矩阵对齐与 `scan_parquet_chunks` 流式迭代。
+- `cq.engine`: JIT 撮合内核 (`matching.py`)、`MatchingMode` 枚举/参数解析与 SoA 状态管理 (`state.py`)。
+- `cq.engine.strategy`: `@strategy` 装饰器与 `BarContext` 上下文切片 (`ctx.symbol_idx`, `ctx.adj.close_history`)。
+- `cq.engine.indicators`: Numba 兼容的递推指标算子。
+- `cq.engine.analytics`: 回测结果汇总、交易日志与 Polars 绩效度量。
 
 ## 3. 执行模式
 - **统一入口 API (`engine.run`)**:

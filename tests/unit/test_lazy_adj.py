@@ -5,7 +5,7 @@
 
 import numpy as np
 import pytest
-from carrotquant import MarketData, BarContext, strategy, Engine
+from cq.engine import MarketData, BarContext, strategy, Engine
 
 
 def test_market_data_without_adj_factor_defaults_to_raw():

@@ -4,7 +4,7 @@
 
 import pytest
 import numpy as np
-from carrotquant.indicators.dynamic_ma import calc_sma_step_jit, calc_ema_step_jit
+from cq.engine.indicators.dynamic_ma import calc_sma_step_jit, calc_ema_step_jit
 
 
 def test_calc_sma_step_jit():

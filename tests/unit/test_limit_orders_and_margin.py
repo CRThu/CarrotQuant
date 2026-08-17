@@ -4,7 +4,7 @@
 
 import numpy as np
 import pytest
-from carrotquant import strategy, BarContext, Engine, MatchingMode, MarketData
+from cq.engine import strategy, BarContext, Engine, MatchingMode, MarketData
 
 
 @pytest.fixture

@@ -13,8 +13,8 @@ import numpy as np
 # 将项目根目录添加到 sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from carrotquant import strategy, BarContext, Engine
-from carrotquant.data import ColumnDataLoader
+from cq.engine import strategy, BarContext, Engine
+from cq.engine.feed import ColumnDataLoader
 
 
 def main():

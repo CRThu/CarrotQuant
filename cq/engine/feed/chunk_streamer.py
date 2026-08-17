@@ -6,7 +6,7 @@
 
 from typing import Generator, List, Optional, Tuple, Union
 import numpy as np
-from carrotquant.data.column_loader import MarketDataContainer
+from cq.engine.feed.column_loader import MarketDataContainer
 
 
 class ChunkStreamer:

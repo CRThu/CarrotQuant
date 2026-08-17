@@ -7,7 +7,7 @@
 
 import pytest
 import numpy as np
-from carrotquant import strategy, BarContext, Engine, MarketData
+from cq.engine import strategy, BarContext, Engine, MarketData
 
 
 def test_anti_lookahead_chaos_injection():

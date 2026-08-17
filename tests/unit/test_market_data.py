@@ -4,7 +4,7 @@
 
 import numpy as np
 import pytest
-from carrotquant.data.column_loader import MarketData
+from cq.engine.feed.column_loader import MarketData
 
 
 def test_market_data_unadjusted_and_adjusted_views():

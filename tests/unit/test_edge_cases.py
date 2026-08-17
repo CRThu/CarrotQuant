@@ -6,8 +6,8 @@
 import pytest
 import numpy as np
 import polars as pl
-from carrotquant import strategy, BarContext, Engine, MarketData
-from carrotquant.engine.matching import execute_trade_jit
+from cq.engine import strategy, BarContext, Engine, MarketData
+from cq.engine.matching import execute_trade_jit
 
 
 def test_edge_case_suspended_stocks():

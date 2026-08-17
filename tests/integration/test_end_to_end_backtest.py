@@ -4,7 +4,7 @@
 
 import pytest
 import numpy as np
-from carrotquant import strategy, BarContext, Engine, MarketData
+from cq.engine import strategy, BarContext, Engine, MarketData
 
 
 def test_end_to_end_long_short_backtest():

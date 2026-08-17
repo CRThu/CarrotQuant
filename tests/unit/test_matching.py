@@ -4,7 +4,7 @@
 
 import pytest
 import numpy as np
-from carrotquant.engine.matching import (
+from cq.engine.matching import (
     execute_trade_jit,
     get_execution_price,
     MatchingMode,
@@ -157,7 +157,7 @@ def test_execute_trade_max_volume_ratio_limit():
 
 def test_vectorized_engine_max_volume_ratio_limit():
     """测试 JIT 向量模式下 Engine(max_volume_ratio=0.2) 限制撮合交易量上限"""
-    from carrotquant import Engine, MarketData
+    from cq.engine import Engine, MarketData
 
     timestamps = np.array(["2024-01-01"])
     symbols = ["SYM0"]
@@ -189,7 +189,7 @@ def test_vectorized_engine_max_volume_ratio_limit():
 
 def test_open_matching_mode_delayed_execution():
     """测试 matching_mode='open' 时 t 步决策在 t+1 步开盘价撮合 (彻底无未来函数偷看)"""
-    from carrotquant import Engine, MarketData, strategy, BarContext
+    from cq.engine import Engine, MarketData, strategy, BarContext
 
     timestamps = np.array(["2024-01-01", "2024-01-02"])
     symbols = ["SYM0"]

@@ -6,9 +6,9 @@ import pytest
 import numpy as np
 import polars as pl
 
-from carrotquant import Engine, MarketData, MatchingMode, ColumnDataLoader
-from carrotquant.analytics.post_process import BacktestResult
-from carrotquant.strategy.context import BarContext
+from cq.engine import Engine, MarketData, MatchingMode, ColumnDataLoader
+from cq.engine.analytics.post_process import BacktestResult
+from cq.engine.strategy.context import BarContext
 
 
 def test_engine_run_invalid_arguments():

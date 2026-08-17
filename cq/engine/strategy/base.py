@@ -6,7 +6,7 @@
 
 from typing import Callable, Any
 import functools
-from carrotquant.strategy.context import BarContext
+from cq.engine.strategy.context import BarContext
 
 
 class BaseStrategy:

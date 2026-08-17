@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 import pytest
-from carrotquant import ColumnDataLoader, MarketData, BarContext, strategy, Engine
+from cq.engine import ColumnDataLoader, MarketData, BarContext, strategy, Engine
 
 
 @pytest.fixture

@@ -4,8 +4,8 @@
 
 import pytest
 import numpy as np
-from carrotquant.strategy.base import strategy
-from carrotquant.strategy.context import BarContext
+from cq.engine.strategy.base import strategy
+from cq.engine.strategy.context import BarContext
 
 
 def test_strategy_decorator():

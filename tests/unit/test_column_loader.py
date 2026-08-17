@@ -6,8 +6,8 @@
 import pytest
 import numpy as np
 import polars as pl
-from carrotquant.data.column_loader import ColumnDataLoader, MarketDataContainer
-from carrotquant.data.chunk_streamer import ChunkStreamer
+from cq.engine.feed.column_loader import ColumnDataLoader, MarketDataContainer
+from cq.engine.feed.chunk_streamer import ChunkStreamer
 
 
 def test_market_data_container_initialization():

@@ -25,7 +25,8 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["carrotquant*"]
+include = ["cq*"]
+namespaces = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -50,7 +51,7 @@ search = 'version = "{current_version}"'
 replace = 'version = "{new_version}"'
 
 [[tool.bumpversion.files]]
-filename = "carrotquant/__init__.py"
+filename = "cq/engine/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
 

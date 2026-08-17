@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 from pathlib import Path
 
-from carrotquant import strategy, BarContext, Engine, MarketData
+from cq.engine import strategy, BarContext, Engine, MarketData
 
 
 def generate_synthetic_market_data(n_steps: int = 240, n_symbols: int = 5000) -> MarketData:

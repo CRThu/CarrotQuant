@@ -9,9 +9,9 @@ from typing import Callable, Iterable, List, Optional, Union
 import numpy as np
 from numba import njit
 
-from carrotquant.data.column_loader import MarketData
-from carrotquant.engine.state import EngineState
-from carrotquant.engine.matching import (
+from cq.engine.feed.column_loader import MarketData
+from cq.engine.state import EngineState
+from cq.engine.matching import (
     execute_trade_jit,
     get_execution_price,
     check_limit_order_triggered_jit,
@@ -19,8 +19,8 @@ from carrotquant.engine.matching import (
     MATCHING_MODE_CLOSE,
     MATCHING_MODE_OPEN,
 )
-from carrotquant.strategy.context import BarContext
-from carrotquant.analytics.post_process import BacktestResult
+from cq.engine.strategy.context import BarContext
+from cq.engine.analytics.post_process import BacktestResult
 
 
 @njit(fastmath=True, nogil=True)

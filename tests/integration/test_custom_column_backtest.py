@@ -4,7 +4,7 @@
 
 import numpy as np
 import pytest
-from carrotquant import MarketData, BarContext, strategy, Engine
+from cq.engine import MarketData, BarContext, strategy, Engine
 
 
 def test_end_to_end_backtest_with_custom_factor():

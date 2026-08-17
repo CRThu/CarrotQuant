@@ -4,8 +4,8 @@
 
 import numpy as np
 import pytest
-from carrotquant import MarketData, BarContext, strategy, Engine
-from carrotquant.data.column_loader import LazyCustomFields
+from cq.engine import MarketData, BarContext, strategy, Engine
+from cq.engine.feed.column_loader import LazyCustomFields
 
 
 def test_custom_fields_non_existent_column_raises_keyerror():
