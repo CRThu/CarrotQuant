@@ -2,13 +2,15 @@ name: Tests
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main", "master" ]
+    branches:
+      - main
 
 jobs:
   test:
-    name: Unit & Benchmark Tests
+    name: Meta Import Tests (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -21,13 +23,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
+          version: "latest"
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install Dependencies
-        run: uv sync --extra dev
+      - name: Install Dependencies & Extras
+        run: |
+          uv sync --extra dev --extra all
 
       - name: Run Pytest
-        run: uv run pytest
+        run: uv run pytest -v
