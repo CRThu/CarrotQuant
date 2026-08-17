@@ -6,7 +6,7 @@ Umbrella package providing:
 - carrotquant-data   -> cq.data
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # 结构化暴露子命名空间模块，遵循清晰的分层调用语义
 try:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "carrotquant"
-version = "1.0.0"
+version = "1.1.0"
 description = "CarrotQuant: High-performance, full-stack quantitative trading, data pipeline and backtesting framework"
 readme = "README.md"
 authors = [
@@ -44,7 +44,7 @@ Repository = "https://github.com/CRThu/carrotquant.git"
 cqdata = "cq.data.entrypoints.cli:app"
 
 [tool.bumpversion]
-current_version = "1.0.0"
+current_version = "1.1.0"
 commit = true
 tag = true
 allow_dirty = true

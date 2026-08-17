@@ -12,7 +12,7 @@ import cq.data
 def test_meta_version():
     """验证元包版本号存在且符合语义版本"""
     assert hasattr(carrotquant, "__version__")
-    assert carrotquant.__version__ == "1.0.0"
+    assert carrotquant.__version__ == "1.1.0"
 
 
 def test_engine_subpackage_available():

@@ -84,7 +84,7 @@ wheels = [
 
 [[package]]
 name = "carrotquant"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "carrotquant-data" },
@@ -122,7 +122,7 @@ provides-extras = ["engine", "data", "all", "dev"]
 
 [[package]]
 name = "carrotquant-data"
-version = "1.2.3"
+version = "1.3.0"
 source = { editable = "../carrotquant-data" }
 dependencies = [
     { name = "baostock" },
@@ -165,7 +165,7 @@ dev = [
 
 [[package]]
 name = "carrotquant-engine"
-version = "1.0.5"
+version = "1.1.0"
 source = { editable = "../carrotquant-engine" }
 dependencies = [
     { name = "numba" },
