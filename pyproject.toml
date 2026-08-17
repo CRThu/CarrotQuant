@@ -67,7 +67,3 @@ replace = '__version__ = "{new_version}"'
 testpaths = ["tests"]
 pythonpath = ["."]
 
-[tool.uv.sources]
-carrotquant-engine = { path = "../carrotquant-engine", editable = true }
-carrotquant-data = { path = "../carrotquant-data", editable = true }
-
